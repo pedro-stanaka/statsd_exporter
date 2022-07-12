@@ -1,0 +1,39 @@
+version: '3.7'
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - "9090:9090"
+    volumes:
+      - './config/prometheus.yml:/etc/prometheus/prometheus.yml:cached'
+
+  dd-agent:
+    image: 'gcr.io/datadoghq/agent:7'
+    env_file: .env
+    logging:
+      driver: none
+
+#  statsd-exporter-1:
+#    image: prom/statsd-exporter:latest
+#    ports:
+#      - '19102:9102'
+#      - '19125:9125'
+#
+#  statsd-exporter-2:
+#    image: prom/statsd-exporter:latest
+#    ports:
+#      - '29102:9102'
+#      - '29125:9125'
+#
+#  statsd-loadbalancer:
+#    ports:
+#      - '8080:8080'
+#    build:
+#      context: ../.
+#    command:
+#      - --upstream.address=statsd-exporter-1:9125
+#      - --upstream.address=statsd-exporter-2:9125
+#      - --filters.drop_metric=load_shedder_.+

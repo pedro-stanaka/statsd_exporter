@@ -25,6 +25,7 @@ import (
 
 	"github.com/prometheus/statsd_exporter/pkg/clock"
 	"github.com/prometheus/statsd_exporter/pkg/event"
+	"github.com/prometheus/statsd_exporter/pkg/gatherer"
 	"github.com/prometheus/statsd_exporter/pkg/line"
 	"github.com/prometheus/statsd_exporter/pkg/listener"
 	"github.com/prometheus/statsd_exporter/pkg/mapper"
@@ -1167,7 +1168,7 @@ mappings:
 }
 
 func TestHashLabelNames(t *testing.T) {
-	r := registry.NewRegistry(prometheus.DefaultRegisterer, nil)
+	r := registry.NewRegistry(prometheus.DefaultRegisterer, nil, gatherer.DefaultGatherer)
 	// Validate value hash changes and name has doesn't when just the value changes.
 	hash1, _ := r.HashLabels(map[string]string{
 		"label": "value1",
@@ -1328,7 +1329,7 @@ func BenchmarkHashNameAndLabels(b *testing.B) {
 		},
 	}
 
-	r := registry.NewRegistry(prometheus.DefaultRegisterer, nil)
+	r := registry.NewRegistry(prometheus.DefaultRegisterer, nil, gatherer.DefaultGatherer)
 	for _, s := range scenarios {
 		b.Run(s.name, func(b *testing.B) {
 			for n := 0; n < b.N; n++ {

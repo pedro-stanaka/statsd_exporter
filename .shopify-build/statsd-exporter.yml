@@ -1,0 +1,7 @@
+containers:
+  statsd_exporter:
+    dockerfile:
+      path: Dockerfile.shopify
+
+steps:
+  - build: statsd_exporter

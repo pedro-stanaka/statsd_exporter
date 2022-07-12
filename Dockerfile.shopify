@@ -1,0 +1,19 @@
+FROM golang:1.17-alpine as builder
+
+COPY go.mod go.sum /go/github.com/Shopify/statsd-exporter/
+
+WORKDIR /go/github.com/Shopify/statsd-exporter/
+
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 go build -o bin/statsd_exporter
+
+
+FROM gcr.io/shopify-base-images/alpine:latest
+COPY --from=builder /go/github.com/Shopify/statsd-exporter/bin/statsd_exporter /bin/statsd_exporter
+
+USER nobody
+EXPOSE      9102 9125 9125/udp
+ENTRYPOINT  [ "/bin/statsd_exporter" ]

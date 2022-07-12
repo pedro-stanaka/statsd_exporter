@@ -29,7 +29,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	versioncollector "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/common/version"
@@ -38,6 +37,7 @@ import (
 	"github.com/prometheus/statsd_exporter/pkg/address"
 	"github.com/prometheus/statsd_exporter/pkg/event"
 	"github.com/prometheus/statsd_exporter/pkg/exporter"
+	"github.com/prometheus/statsd_exporter/pkg/gatherer"
 	"github.com/prometheus/statsd_exporter/pkg/level"
 	"github.com/prometheus/statsd_exporter/pkg/line"
 	"github.com/prometheus/statsd_exporter/pkg/listener"
@@ -270,6 +270,7 @@ func main() {
 		relayPacketLen       = kingpin.Flag("statsd.relay.packet-length", "Maximum relay output packet length to avoid fragmentation").Default("1400").Uint()
 		udpPacketQueueSize   = kingpin.Flag("statsd.udp-packet-queue-size", "Size of internal queue for processing UDP packets.").Default("10000").Int()
 	)
+	gatherer.RegisterFlags(kingpin.CommandLine)
 
 	promlogConfig := &promlog.Config{}
 	flag.AddFlags(kingpin.CommandLine, promlogConfig)
@@ -492,7 +493,7 @@ func main() {
 	}
 
 	mux := http.DefaultServeMux
-	mux.Handle(*metricsEndpoint, promhttp.Handler())
+	mux.Handle(*metricsEndpoint, gatherer.Handler())
 	if *metricsEndpoint != "/" && *metricsEndpoint != "" {
 		landingConfig := web.LandingConfig{
 			Name:        "StatsD Exporter",

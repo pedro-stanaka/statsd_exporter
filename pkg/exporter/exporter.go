@@ -22,6 +22,7 @@ import (
 
 	"github.com/prometheus/statsd_exporter/pkg/clock"
 	"github.com/prometheus/statsd_exporter/pkg/event"
+	"github.com/prometheus/statsd_exporter/pkg/gatherer"
 	"github.com/prometheus/statsd_exporter/pkg/level"
 	"github.com/prometheus/statsd_exporter/pkg/mapper"
 	"github.com/prometheus/statsd_exporter/pkg/registry"
@@ -200,7 +201,7 @@ func (b *Exporter) handleEvent(thisEvent event.Event) {
 func NewExporter(reg prometheus.Registerer, mapper *mapper.MetricMapper, logger log.Logger, eventsActions *prometheus.CounterVec, eventsUnmapped prometheus.Counter, errorEventStats *prometheus.CounterVec, eventStats *prometheus.CounterVec, conflictingEventStats *prometheus.CounterVec, metricsCount *prometheus.GaugeVec) *Exporter {
 	return &Exporter{
 		Mapper:                mapper,
-		Registry:              registry.NewRegistry(reg, mapper),
+		Registry:              registry.NewRegistry(reg, mapper, gatherer.DefaultGatherer),
 		Logger:                logger,
 		EventsActions:         eventsActions,
 		EventsUnmapped:        eventsUnmapped,

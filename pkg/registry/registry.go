@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/statsd_exporter/pkg/clock"
+	"github.com/prometheus/statsd_exporter/pkg/gatherer"
 	"github.com/prometheus/statsd_exporter/pkg/mapper"
 	"github.com/prometheus/statsd_exporter/pkg/metrics"
 )
@@ -50,14 +51,16 @@ type Registry struct {
 	// hash.
 	ValueBuf, NameBuf bytes.Buffer
 	Hasher            hash.Hash64
+	Gatherer          *gatherer.CounterResetGatherer
 }
 
-func NewRegistry(reg prometheus.Registerer, mapper *mapper.MetricMapper) *Registry {
+func NewRegistry(reg prometheus.Registerer, mapper *mapper.MetricMapper, gatherer *gatherer.CounterResetGatherer) *Registry {
 	return &Registry{
 		Registerer: reg,
 		Metrics:    make(map[string]metrics.Metric),
 		Mapper:     mapper,
 		Hasher:     fnv.New64a(),
+		Gatherer:   gatherer,
 	}
 }
 
@@ -123,6 +126,9 @@ func (r *Registry) Store(metricName string, hash metrics.LabelHash, labels prome
 		}
 		metric.Metrics[hash.Values] = rm
 		v.RefCount++
+		if metricType == metrics.CounterMetricType || metricType == metrics.HistogramMetricType {
+			r.Gatherer.AddHash(metricName, uint64(hash.Values))
+		}
 		return
 	}
 	rm.LastRegisteredAt = now
