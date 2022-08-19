@@ -2,6 +2,32 @@ containers:
   statsd_exporter:
     dockerfile:
       path: Dockerfile.shopify
+  validation:
+    build:
+      from: ubuntu-latest
+      type: ci
 
 steps:
   - build: statsd_exporter
+  - label: ':golang: Check mod tidiness'
+    timeout: 10m
+    container: validation
+    cache:
+      - $HOME/go/pkg/mod
+      - $HOME/go/.cache/go-build
+    run:
+      - go mod tidy
+      - git diff --exit-code
+    git:
+      history: shallow
+  - label: ":golang: Tests"
+    timeout: 10m
+    container: validation
+    cache:
+      - $HOME/go/pkg/mod
+      - $HOME/go/.cache/go-build
+      - test/cache
+    run:
+      - mkdir -p test/cache
+      - export GOCACHE="$(pwd)/test/cache"
+      - go test ./...

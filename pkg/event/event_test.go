@@ -61,24 +61,25 @@ func TestEventIntervalFlush(t *testing.T) {
 
 	c := make(chan Events, 100)
 	eq := NewEventQueue(c, 1000, time.Second*1000, eventsFlushed)
+	evQ := eq.(*EventQueue)
 	e := make(Events, 10)
 	eq.Queue(e)
 
-	if eq.Len() != 10 {
-		t.Fatal("Expected 10 events to be queued, but got", eq.Len())
+	if evQ.Len() != 10 {
+		t.Fatal("Expected 10 events to be queued, but got", evQ.Len())
 	}
 
-	if len(eq.C) != 0 {
-		t.Fatal("Expected 0 events in the event channel, but got", len(eq.C))
+	if len(evQ.C) != 0 {
+		t.Fatal("Expected 0 events in the event channel, but got", len(evQ.C))
 	}
 
 	// Tick time forward to trigger a flush
 	clock.ClockInstance.Instant = time.Unix(10000, 0)
 	clock.ClockInstance.TickerCh <- time.Unix(10000, 0)
 
-	events := <-eq.C
-	if eq.Len() != 0 {
-		t.Fatal("Expected 0 events to be queued, but got", eq.Len())
+	events := <-evQ.C
+	if evQ.Len() != 0 {
+		t.Fatal("Expected 0 events to be queued, but got", evQ.Len())
 	}
 
 	if len(events) != 10 {

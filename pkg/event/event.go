@@ -79,7 +79,11 @@ type EventHandler interface {
 	Queue(event Events)
 }
 
-func NewEventQueue(c chan Events, flushThreshold int, flushInterval time.Duration, eventsFlushed prometheus.Counter) *EventQueue {
+func NewEventQueue(c chan Events, flushThreshold int, flushInterval time.Duration, eventsFlushed prometheus.Counter) EventHandler {
+	if flushThreshold == 0 {
+		return &UnbufferedEventHandler{C: c}
+	}
+
 	ticker := clock.NewTicker(flushInterval)
 	eq := &EventQueue{
 		C:              c,
@@ -118,7 +122,7 @@ func (eq *EventQueue) Flush() {
 
 func (eq *EventQueue) FlushUnlocked() {
 	eq.C <- eq.q
-	eq.q = make([]Event, 0, cap(eq.q))
+	eq.q = make([]Event, 0, eq.flushThreshold)
 	eq.eventsFlushed.Inc()
 }
 

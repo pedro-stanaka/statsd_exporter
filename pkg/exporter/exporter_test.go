@@ -19,13 +19,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/statsd_exporter/pkg/gatherer"
+
+	"github.com/prometheus/statsd_exporter/pkg/parser"
+	"github.com/stretchr/testify/require"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/prometheus/statsd_exporter/pkg/clock"
 	"github.com/prometheus/statsd_exporter/pkg/event"
-	"github.com/prometheus/statsd_exporter/pkg/gatherer"
 	"github.com/prometheus/statsd_exporter/pkg/line"
 	"github.com/prometheus/statsd_exporter/pkg/listener"
 	"github.com/prometheus/statsd_exporter/pkg/mapper"
@@ -40,12 +44,6 @@ var (
 		},
 		[]string{"type"},
 	)
-	eventsFlushed = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "statsd_exporter_event_queue_flushed_total",
-			Help: "Number of times events were flushed to exporter",
-		},
-	)
 	eventsUnmapped = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "statsd_exporter_events_unmapped_total",
@@ -55,12 +53,6 @@ var (
 		prometheus.CounterOpts{
 			Name: "statsd_exporter_udp_packets_total",
 			Help: "The total number of StatsD packets received over UDP.",
-		},
-	)
-	udpPacketDrops = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "statsd_exporter_udp_packet_drops_total",
-			Help: "The total number of dropped StatsD packets which received over UDP.",
 		},
 	)
 	tcpConnections = prometheus.NewCounter(
@@ -278,7 +270,7 @@ mappings:
 // TestLabelParsing verifies that labels getting parsed out of metric
 // names are being properly created.
 func TestLabelParsing(t *testing.T) {
-	codes := [3]string{"200", "300", "400"}
+	codes := [2]string{"200", "300"}
 
 	events := make(chan event.Events)
 	go func() {
@@ -292,11 +284,6 @@ func TestLabelParsing(t *testing.T) {
 				CMetricName: "counter.test.300",
 				CValue:      1,
 				CLabels:     make(map[string]string),
-			},
-			&event.CounterEvent{
-				CMetricName: "counter.test.400",
-				CValue:      1,
-				CLabels:     map[string]string{"code": "should be overwritten"},
 			},
 		}
 		events <- c
@@ -332,51 +319,6 @@ mappings:
 		if getFloat64(metrics, "counter_test", labels) == nil {
 			t.Fatalf("Could not find metrics for counter_test code %s", code)
 		}
-	}
-}
-
-func TestHonorLabels(t *testing.T) {
-	metricName := "some_counter"
-	events := make(chan event.Events)
-	go func() {
-		c := event.Events{
-			&event.CounterEvent{
-				CMetricName: metricName,
-				CValue:      1,
-				CLabels:     map[string]string{"some_label": "bar"},
-			},
-		}
-		events <- c
-		close(events)
-	}()
-
-	config := `
-mappings:
-  - match: .*
-    match_type: regex
-    name: $0
-    labels:
-      some_label: foo
-    honor_labels: true
-`
-	testMapper := &mapper.MetricMapper{
-		Logger: log.NewNopLogger(),
-	}
-	err := testMapper.InitFromYAMLString(config)
-	if err != nil {
-		t.Fatalf("Config load error: %s %s", config, err)
-	}
-
-	ex := NewExporter(prometheus.DefaultRegisterer, testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
-	ex.Listen(events)
-
-	metrics, err := prometheus.DefaultGatherer.Gather()
-	if err != nil {
-		t.Fatalf("Cannot gather from DefaultGatherer: %v", err)
-	}
-
-	if getFloat64(metrics, metricName, map[string]string{"some_label": "bar"}) == nil {
-		t.Fatalf("Could not find metrics for %s with label set", metricName)
 	}
 }
 
@@ -724,52 +666,57 @@ func TestInvalidUtf8InDatadogTagValue(t *testing.T) {
 		}
 	}()
 
-	events := make(chan event.Events)
+	events := make(chan event.Events, 10)
+	packets := make(chan string, 10)
 	ueh := &event.UnbufferedEventHandler{C: events}
 
-	parser := line.NewParser()
-	parser.EnableDogstatsdParsing()
-	parser.EnableInfluxdbParsing()
-	parser.EnableLibratoParsing()
-	parser.EnableSignalFXParsing()
+	testParser := line.NewParser()
+	testParser.EnableDogstatsdParsing()
+	testParser.EnableInfluxdbParsing()
+	testParser.EnableLibratoParsing()
+	testParser.EnableSignalFXParsing()
+
+	w := parser.NewWorker(
+		log.NewNopLogger(),
+		ueh,
+		testParser,
+		nil,
+		linesReceived,
+		*sampleErrors,
+		samplesReceived,
+		tagErrors,
+		tagsReceived,
+	)
+	go w.Consume(packets)
 
 	go func() {
 		for _, l := range []statsDPacketHandler{&listener.StatsDUDPListener{
-			Conn:            nil,
-			EventHandler:    nil,
-			Logger:          log.NewNopLogger(),
-			LineParser:      parser,
-			UDPPackets:      udpPackets,
-			UDPPacketDrops:  udpPacketDrops,
-			LinesReceived:   linesReceived,
-			EventsFlushed:   eventsFlushed,
-			SampleErrors:    *sampleErrors,
-			SamplesReceived: samplesReceived,
-			TagErrors:       tagErrors,
-			TagsReceived:    tagsReceived,
+			Conn:         nil,
+			Logger:       log.NewNopLogger(),
+			PacketBuffer: packets,
+			UDPPackets:   udpPackets,
 		}, &mockStatsDTCPListener{listener.StatsDTCPListener{
-			Conn:            nil,
-			EventHandler:    nil,
-			Logger:          log.NewNopLogger(),
-			LineParser:      parser,
-			LinesReceived:   linesReceived,
-			EventsFlushed:   eventsFlushed,
-			SampleErrors:    *sampleErrors,
-			SamplesReceived: samplesReceived,
-			TagErrors:       tagErrors,
-			TagsReceived:    tagsReceived,
-			TCPConnections:  tcpConnections,
-			TCPErrors:       tcpErrors,
-			TCPLineTooLong:  tcpLineTooLong,
+			Conn:           nil,
+			Logger:         log.NewNopLogger(),
+			TCPConnections: tcpConnections,
+			TCPErrors:      tcpErrors,
+			PacketBuffer:   packets,
+			TCPLineTooLong: tcpLineTooLong,
 		}, log.NewNopLogger()}} {
-			l.SetEventHandler(ueh)
+			l.SetPacketBuffer(packets)
 			l.HandlePacket([]byte("bar:200|c|#tag:value\nbar:200|c|#tag:\xc3\x28invalid"))
 		}
-		close(events)
 	}()
 
 	testMapper := mapper.MetricMapper{}
 
+	require.Eventually(t, func() bool {
+		fmt.Println(len(events))
+		return len(events) == 4 && len(packets) == 0
+	}, time.Second, time.Millisecond*10)
+
+	close(packets)
+	close(events)
 	ex := NewExporter(prometheus.DefaultRegisterer, &testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
 	ex.Listen(events)
 }
@@ -903,58 +850,6 @@ func TestCounterIncrement(t *testing.T) {
 	}
 }
 
-// Test case from https://github.com/statsd/statsd/blob/master/docs/metric_types.md#gauges
-func TestGaugeIncrementDecrement(t *testing.T) {
-	// Start exporter with a synchronous channel
-	events := make(chan event.Events)
-	go func() {
-		testMapper := mapper.MetricMapper{}
-		ex := NewExporter(prometheus.DefaultRegisterer, &testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
-		ex.Listen(events)
-	}()
-
-	// Synchronously send a statsd event to wait for handleEvent execution.
-	// Then close events channel to stop a listener.
-	name := "gaugor"
-	c := event.Events{
-		&event.GaugeEvent{
-			GMetricName: "gaugor",
-			GValue:      333,
-			GRelative:   false,
-			GLabels:     map[string]string{},
-		},
-		&event.GaugeEvent{
-			GMetricName: "gaugor",
-			GValue:      -10,
-			GRelative:   true,
-			GLabels:     map[string]string{},
-		},
-		&event.GaugeEvent{
-			GMetricName: "gaugor",
-			GValue:      4,
-			GRelative:   true,
-			GLabels:     map[string]string{},
-		},
-	}
-	events <- c
-	// Push empty event so that we block until the first event is consumed.
-	events <- event.Events{}
-	close(events)
-
-	// Check histogram value
-	metrics, err := prometheus.DefaultGatherer.Gather()
-	if err != nil {
-		t.Fatalf("Cannot gather from DefaultGatherer: %v", err)
-	}
-	value := getFloat64(metrics, name, nil)
-	if value == nil {
-		t.Fatal("gauge value should not be nil")
-	}
-	if *value != 327 {
-		t.Fatalf("gauge wasn't incremented and decremented properly")
-	}
-}
-
 func TestScaledMapping(t *testing.T) {
 	events := make(chan event.Events)
 	testMapper := mapper.MetricMapper{}
@@ -1014,7 +909,7 @@ func TestScaledMapping(t *testing.T) {
 
 type statsDPacketHandler interface {
 	HandlePacket(packet []byte)
-	SetEventHandler(eh event.EventHandler)
+	SetPacketBuffer(pb chan string)
 }
 
 type mockStatsDTCPListener struct {
