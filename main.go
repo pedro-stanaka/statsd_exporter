@@ -144,7 +144,7 @@ var (
 			Name: "statsd_exporter_events_conflict_total",
 			Help: "The total number of StatsD events with conflicting names.",
 		},
-		[]string{"type"},
+		[]string{"type", "metric_name"},
 	)
 	errorEventStats = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -166,6 +166,18 @@ var (
 			Help: "The total number of metrics.",
 		},
 		[]string{"type"},
+	)
+	bufferLength = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "statsd_exporter_packet_buffer_size",
+			Help: "Current length of the first level packet buffer.",
+		},
+	)
+	bufferMaxLength = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "statsd_exporter_packet_buffer_max_size",
+			Help: "Maximum length of the first level packet buffer.",
+		},
 	)
 )
 
@@ -300,6 +312,11 @@ func main() {
 
 	packets := make(chan string, *packetBufferSize)
 	defer close(packets)
+	if packetBufferSize != nil {
+		bufferMaxLength.Set(float64(*packetBufferSize))
+	} else {
+		bufferMaxLength.Set(float64(0))
+	}
 
 	events := make(chan event.Events, *eventQueueSize)
 	defer close(events)
@@ -492,7 +509,7 @@ func main() {
 	}
 
 	mux := http.DefaultServeMux
-	mux.Handle(*metricsEndpoint, gatherer.Handler())
+	mux.Handle(*metricsEndpoint, metricsHandler(packets))
 	if *metricsEndpoint != "/" && *metricsEndpoint != "" {
 		landingConfig := web.LandingConfig{
 			Name:        "StatsD Exporter",
@@ -566,4 +583,12 @@ func main() {
 	case <-quitChan:
 		level.Info(logger).Log("msg", "Received lifecycle api quit, exiting")
 	}
+}
+
+func metricsHandler(packets chan<- string) http.Handler {
+	originalHandler := gatherer.Handler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bufferLength.Set(float64(len(packets)))
+		originalHandler.ServeHTTP(w, r)
+	})
 }

@@ -139,7 +139,7 @@ func (b *Exporter) handleEvent(thisEvent event.Event) {
 			b.EventStats.WithLabelValues("counter").Inc()
 		} else {
 			level.Debug(b.Logger).Log("msg", regErrF, "metric", metricName, "error", err)
-			b.ConflictingEventStats.WithLabelValues("counter").Inc()
+			b.ConflictingEventStats.WithLabelValues("counter", thisEvent.MetricName()).Inc()
 		}
 
 	case *event.GaugeEvent:
@@ -154,7 +154,7 @@ func (b *Exporter) handleEvent(thisEvent event.Event) {
 			b.EventStats.WithLabelValues("gauge").Inc()
 		} else {
 			level.Debug(b.Logger).Log("msg", regErrF, "metric", metricName, "error", err)
-			b.ConflictingEventStats.WithLabelValues("gauge").Inc()
+			b.ConflictingEventStats.WithLabelValues("gauge", thisEvent.MetricName()).Inc()
 		}
 
 	case *event.ObserverEvent:
@@ -174,7 +174,7 @@ func (b *Exporter) handleEvent(thisEvent event.Event) {
 				b.EventStats.WithLabelValues("observer").Inc()
 			} else {
 				level.Debug(b.Logger).Log("msg", regErrF, "metric", metricName, "error", err)
-				b.ConflictingEventStats.WithLabelValues("observer").Inc()
+				b.ConflictingEventStats.WithLabelValues("observer", thisEvent.MetricName()).Inc()
 			}
 
 		case mapper.ObserverTypeDefault, mapper.ObserverTypeSummary:
@@ -184,7 +184,7 @@ func (b *Exporter) handleEvent(thisEvent event.Event) {
 				b.EventStats.WithLabelValues("observer").Inc()
 			} else {
 				level.Debug(b.Logger).Log("msg", regErrF, "metric", metricName, "error", err)
-				b.ConflictingEventStats.WithLabelValues("observer").Inc()
+				b.ConflictingEventStats.WithLabelValues("observer", thisEvent.MetricName()).Inc()
 			}
 
 		default:
