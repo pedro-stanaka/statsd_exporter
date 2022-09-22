@@ -585,6 +585,7 @@ mappings:
 			}
 
 			events := make(chan event.Events)
+
 			go func() {
 				events <- s.in
 				close(events)
@@ -717,6 +718,7 @@ func TestInvalidUtf8InDatadogTagValue(t *testing.T) {
 
 	close(packets)
 	close(events)
+
 	ex := NewExporter(prometheus.DefaultRegisterer, &testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
 	ex.Listen(events)
 }
@@ -973,7 +975,9 @@ mappings:
 		t.Fatalf("Config load error: %s %s", config, err)
 	}
 	events := make(chan event.Events)
+
 	defer close(events)
+
 	go func() {
 		ex := NewExporter(prometheus.DefaultRegisterer, testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
 		ex.Listen(events)
@@ -1062,6 +1066,134 @@ mappings:
 	}
 }
 
+func TestBucketMappingsChanged(t *testing.T) {
+	config := `
+defaults:
+  ttl: 3m
+  match_type: regex
+  observer_type: histogram
+  histogram_options:
+    buckets: [0.1, 0.25, 150, 500, 900]
+mappings:
+  - match: \bexample.metric\b
+    observer_type: histogram
+    histogram_options:
+      buckets: [666]
+    name: example_metric
+    labels:
+      original_metric_name: example.metric
+`
+	// Create mapper from config and start an Exporter with a synchronous channel
+	testMapper := &mapper.MetricMapper{Registerer: prometheus.DefaultRegisterer, MappingsCount: nil, ConfigHash: nil, Logger: log.NewNopLogger()}
+	err := testMapper.InitFromYAMLString(config)
+	if err != nil {
+		t.Fatalf("Config load error: %s %s", config, err)
+	}
+	// Start exporter with a synchronous channel
+	events := make(chan event.Events)
+	defer close(events)
+
+	go func() {
+		ex := NewExporter(prometheus.DefaultRegisterer, testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
+		ex.Mapper.Defaults.ObserverType = mapper.ObserverTypeHistogram
+		ex.Listen(events)
+	}()
+
+	// Synchronously send a statsd event to wait for handleEvent execution.
+	statsdName := "example.metric"
+	promName := "example_metric"
+	c := event.Events{
+		&event.ObserverEvent{
+			OMetricName: statsdName,
+			OValue:      7,
+			OLabels:     map[string]string{},
+		},
+	}
+	events <- c
+	events <- event.Events{}
+
+	// Check histogram value
+	metrics, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("Cannot gather from DefaultGatherer: %v", err)
+	}
+	buckets := getHistogramBuckets(metrics, promName, prometheus.Labels{
+		"original_metric_name": "example.metric",
+	})
+	if buckets == nil {
+		t.Fatal("Histogram buckets should not be nil")
+	}
+	if len(buckets) != 1 {
+		t.Fatal("Histogram buckets should only have length 1")
+	}
+	bucket666Val, ok := buckets[666]
+	if !ok {
+		t.Fatal("Histogram buckets should contain 666")
+	}
+	if bucket666Val != 1 {
+		t.Fatalf("bucket 666 should have value of 1 but has %f", bucket666Val)
+	}
+
+	//Now that we've seen a metric come through with the first config, let's reload a new config with new bucket sizes
+
+	updatedConfig := `
+defaults:
+  ttl: 3m
+  match_type: regex
+  observer_type: histogram
+  histogram_options:
+    buckets: [0.1, 0.25, 150, 500, 900]
+mappings:
+  - match: \bexample.metric\b
+    observer_type: histogram
+    histogram_options:
+      buckets: [5, 10]
+    name: example_metric
+    labels:
+      original_metric_name: example.metric
+`
+
+	// reload config and signal that mappings may have changed
+	err = testMapper.InitFromYAMLString(updatedConfig)
+	if err != nil {
+		t.Fatalf("Config load error: %s %s", updatedConfig, err)
+	}
+	time.Sleep(time.Millisecond) // weak
+
+	//run a metric through the handler again and check to make sure the new bucket config has been taken into account
+	events <- c
+	events <- event.Events{}
+
+	// Check histogram value
+	metrics, err = prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("Cannot gather from DefaultGatherer: %v", err)
+	}
+	buckets = getHistogramBuckets(metrics, promName, prometheus.Labels{
+		"original_metric_name": "example.metric",
+	})
+	if buckets == nil {
+		t.Fatal("Histogram buckets should not be nil")
+	}
+	if len(buckets) != 2 {
+		t.Fatal("Histogram buckets should have length 2")
+	}
+	bucket5Val, ok := buckets[5]
+	if !ok {
+		t.Fatal("Histogram buckets should contain 5")
+	}
+	if bucket5Val != 0 {
+		t.Fatalf("bucket 5 should have value of 0 but has %f", bucket5Val)
+	}
+	bucket10Val, ok := buckets[10]
+	if !ok {
+		t.Fatal("Histogram buckets should contain 10")
+	}
+	if bucket10Val != 1 {
+		t.Fatalf("bucket 10 should have value of 1 but has %f", bucket10Val)
+	}
+}
+
 func TestHashLabelNames(t *testing.T) {
 	r := registry.NewRegistry(prometheus.DefaultRegisterer, nil, gatherer.DefaultGatherer)
 	// Validate value hash changes and name has doesn't when just the value changes.
@@ -1143,6 +1275,43 @@ func getFloat64(metrics []*dto.MetricFamily, name string, labels prometheus.Labe
 		return &value
 	}
 	panic(fmt.Errorf("collected a non-gauge/counter/histogram/summary/untyped metric: %s", metric))
+}
+
+func getHistogramBuckets(metrics []*dto.MetricFamily, name string, labels prometheus.Labels) map[float64]float64 {
+	var metricFamily *dto.MetricFamily
+	for _, m := range metrics {
+		if *m.Name == name {
+			metricFamily = m
+			break
+		}
+	}
+	if metricFamily == nil {
+		return nil
+	}
+
+	var metric *dto.Metric
+	labelStr := fmt.Sprintf("%v", labels)
+	for _, m := range metricFamily.Metric {
+		l := labelPairsAsLabels(m.GetLabel())
+		ls := fmt.Sprintf("%v", l)
+		if labelStr == ls {
+			metric = m
+			break
+		}
+	}
+	if metric == nil {
+		return nil
+	}
+
+	if metric.Histogram == nil {
+		panic(fmt.Errorf("getHistogramBucket called on a non-histogram metric: %s", metric))
+	}
+
+	bucketValues := map[float64]float64{}
+	for _, b := range metric.Histogram.Bucket {
+		bucketValues[*b.UpperBound] = float64(*b.CumulativeCount)
+	}
+	return bucketValues
 }
 
 func labelPairsAsLabels(pairs []*dto.LabelPair) (labels prometheus.Labels) {

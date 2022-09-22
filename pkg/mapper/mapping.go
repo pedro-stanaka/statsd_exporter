@@ -14,10 +14,12 @@
 package mapper
 
 import (
+	"hash"
 	"regexp"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"gopkg.in/yaml.v2"
 
 	"github.com/prometheus/statsd_exporter/pkg/mapper/fsm"
 )
@@ -99,4 +101,14 @@ func (m *MaybeFloat64) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	m.Val = tmp
 	m.Set = true
 	return nil
+}
+
+func (m *MetricMapping) hash(hasher hash.Hash64) (uint64, error) {
+	hasher.Reset()
+	b, err := yaml.Marshal(m)
+	if err != nil {
+		return 0, err
+	}
+	hasher.Write(b)
+	return hasher.Sum64(), nil
 }

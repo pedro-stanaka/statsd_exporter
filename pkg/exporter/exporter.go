@@ -39,6 +39,7 @@ type Registry interface {
 	GetHistogram(metricName string, labels prometheus.Labels, help string, mapping *mapper.MetricMapping, metricsCount *prometheus.GaugeVec) (prometheus.Observer, error)
 	GetSummary(metricName string, labels prometheus.Labels, help string, mapping *mapper.MetricMapping, metricsCount *prometheus.GaugeVec) (prometheus.Observer, error)
 	RemoveStaleMetrics()
+	RemoveMetric(metricName string)
 }
 
 type Exporter struct {
@@ -58,14 +59,32 @@ type Exporter struct {
 func (b *Exporter) Listen(e <-chan event.Events) {
 	removeStaleMetricsTicker := clock.NewTicker(time.Second)
 
+	//listen to changes in mapping, but process them in sequence with events
+	mappingUpdated := make(chan string)
+	b.Mapper.OnMappingUpdated = func(metricName string) {
+		//async to prevent a deadlock when events are being processed while config is reloading
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					level.Warn(b.Logger).Log("msg", "mappingUpdated channel is closed but still being written to. this has a small chance of happening on shutdown, silently failing")
+				}
+			}()
+			mappingUpdated <- metricName
+		}()
+	}
+
 	for {
 		select {
 		case <-removeStaleMetricsTicker.C:
 			b.Registry.RemoveStaleMetrics()
+		case metricName := <-mappingUpdated:
+			b.Registry.RemoveMetric(metricName)
 		case events, ok := <-e:
 			if !ok {
 				level.Debug(b.Logger).Log("msg", "Channel is closed. Break out of Exporter.Listener.")
 				removeStaleMetricsTicker.Stop()
+				b.Mapper.OnMappingUpdated = nil
+				close(mappingUpdated)
 				return
 			}
 			for _, event := range events {

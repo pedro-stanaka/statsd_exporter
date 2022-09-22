@@ -179,6 +179,12 @@ var (
 			Help: "Maximum length of the first level packet buffer.",
 		},
 	)
+	configHash = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "statsd_exporter_config_hash",
+			Help: "FNV hash of the config file",
+		},
+	)
 )
 
 func serveHTTP(mux http.Handler, listenAddress string, logger log.Logger) {
@@ -322,7 +328,7 @@ func main() {
 	defer close(events)
 	eventQueue := event.NewEventQueue(events, *eventFlushThreshold, *eventFlushInterval, eventsFlushed)
 
-	thisMapper := &mapper.MetricMapper{Registerer: prometheus.DefaultRegisterer, MappingsCount: mappingsCount, Logger: logger}
+	thisMapper := &mapper.MetricMapper{Registerer: prometheus.DefaultRegisterer, MappingsCount: mappingsCount, ConfigHash: configHash, Logger: logger}
 
 	cache, err := getCache(*cacheSize, *cacheType, thisMapper.Registerer)
 	if err != nil {

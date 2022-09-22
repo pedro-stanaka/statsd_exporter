@@ -15,6 +15,7 @@ package mapper
 
 import (
 	"fmt"
+	"hash/fnv"
 	"os"
 	"regexp"
 	"sync"
@@ -51,7 +52,10 @@ type MetricMapper struct {
 	cache      MetricMapperCache
 	mutex      sync.RWMutex
 
+	OnMappingUpdated func(metricName string)
+
 	MappingsCount prometheus.Gauge
+	ConfigHash    prometheus.Gauge
 
 	Logger log.Logger
 }
@@ -245,6 +249,7 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string) error {
 		m.Logger = log.NewNopLogger()
 	}
 
+	prevMappings := m.Mappings
 	m.Defaults = n.Defaults
 	m.Mappings = n.Mappings
 
@@ -271,7 +276,71 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string) error {
 		m.MappingsCount.Set(float64(len(n.Mappings)))
 	}
 
+	if m.ConfigHash != nil {
+		// expose hash of config as a metric
+		h := fnv.New64a()
+		_, err := h.Write([]byte(fileContents))
+		if err == nil {
+			m.ConfigHash.Set(float64(h.Sum64()))
+		} else {
+			level.Error(m.Logger).Log("msg", "unable to hash file contents for exposing in metrics", "error", err.Error())
+		}
+	}
+
+	m.updateOnMappingUpdated(prevMappings, m.Mappings)
+
 	return nil
+}
+
+/*
+If the OnMappingUpdated callback is set, this will invoke it with any mappings that have been
+- removed
+- updated
+- added
+*/
+func (m *MetricMapper) updateOnMappingUpdated(prevMappings []MetricMapping, mappings []MetricMapping) {
+	if m.OnMappingUpdated == nil {
+		return
+	}
+
+	prevMappingHashes := toMappingsHash(prevMappings)
+	mappingHashes := toMappingsHash(mappings)
+
+	for prevMappingName, prevMappingHash := range prevMappingHashes {
+		mappingHash, ok := mappingHashes[prevMappingName]
+
+		if !ok {
+			// mapping got removed
+			level.Debug(m.Logger).Log("msg", "remove detected", "name", prevMappingName)
+			m.OnMappingUpdated(prevMappingName)
+			continue
+		}
+
+		if prevMappingHash != mappingHash {
+			//mapping was updated
+			level.Debug(m.Logger).Log("msg", "update detected", "name", prevMappingName)
+			m.OnMappingUpdated(prevMappingName)
+		}
+	}
+
+	for mappingName := range mappingHashes {
+		_, ok := prevMappingHashes[mappingName]
+		if !ok {
+			//mapping was added
+			level.Debug(m.Logger).Log("msg", "add detected", "name", mappingName)
+			m.OnMappingUpdated(mappingName)
+		}
+	}
+}
+
+func toMappingsHash(mappings []MetricMapping) map[string]uint64 {
+	hashesByName := map[string]uint64{}
+	hasher := fnv.New64a()
+	for _, mapping := range mappings {
+		hash, _ := mapping.hash(hasher)
+		hashesByName[mapping.Name] = hash
+	}
+	return hashesByName
 }
 
 func (m *MetricMapper) InitFromFile(fileName string) error {

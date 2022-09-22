@@ -21,6 +21,7 @@ import (
 
 	"github.com/prometheus/statsd_exporter/pkg/mappercache/lru"
 	"github.com/prometheus/statsd_exporter/pkg/mappercache/randomreplacement"
+	"github.com/stretchr/testify/require"
 )
 
 type mappings []struct {
@@ -1758,5 +1759,102 @@ mappings:
 				}
 			}
 		}
+	}
+}
+
+func TestOnMappingReload(t *testing.T) {
+	initialConfig := `
+defaults:
+  ttl: 10s
+  match_type: regex
+  observer_type: histogram
+  histogram_options:
+    buckets: [0.1, 0.25, 150, 500, 900]
+mappings:
+- match: \bmetric.a\b
+  observer_type: histogram
+  histogram_options:
+    buckets: [1,2,3]
+  name: metric_a
+`
+
+	testCases := []struct {
+		name                    string
+		updatedConfig           string
+		expectedMappingsUpdated []string
+	}{
+		{
+			name:                    "mapping added",
+			expectedMappingsUpdated: []string{"metric_b"},
+			updatedConfig: `
+defaults:
+  ttl: 10s
+  match_type: regex
+  observer_type: histogram
+  histogram_options:
+    buckets: [0.1, 0.25, 150, 500, 900]
+mappings:
+- match: \bmetric.a\b
+  observer_type: histogram
+  histogram_options:
+    buckets: [1,2,3]
+  name: metric_a
+- match: \bmetric.b\b
+  observer_type: histogram
+  histogram_options:
+    buckets: [1,2,3]
+  name: metric_b
+`},
+		{
+			name:                    "mapping updated",
+			expectedMappingsUpdated: []string{"metric_a", "metric_b"},
+			updatedConfig: `
+defaults:
+  ttl: 10s
+  match_type: regex
+  observer_type: histogram
+  histogram_options:
+    buckets: [0.1, 0.25, 150, 500, 900]
+mappings:
+- match: \bmetric.a\b
+  observer_type: histogram
+  histogram_options:
+    buckets: [666]
+  name: metric_a
+- match: \bmetric.b\b
+  observer_type: histogram
+  histogram_options:
+    buckets: [1,2,3]
+  name: metric_b
+`},
+		{
+			name:                    "mapping removed",
+			expectedMappingsUpdated: []string{"metric_a"},
+			updatedConfig: `
+defaults:
+  ttl: 10s
+  match_type: regex
+  observer_type: histogram
+  histogram_options:
+    buckets: [0.1, 0.25, 150, 500, 900]
+mappings:
+`},
+	}
+
+	for _, testCase := range testCases {
+		mapper := newTestMapperWithCache("none", 0)
+		mapper.InitFromYAMLString(initialConfig)
+
+		// after config is set, track any metrics that have updates
+		mappingsUpdated := []string{}
+		mapper.OnMappingUpdated = func(metricName string) {
+			mappingsUpdated = append(mappingsUpdated, metricName)
+		}
+
+		// load update config, which should trigger our OnMappingUpdated callback
+		mapper.InitFromYAMLString(testCase.updatedConfig)
+
+		// make sure the things that got updated were captured
+		require.ElementsMatch(t, testCase.expectedMappingsUpdated, mappingsUpdated, testCase.name)
 	}
 }
