@@ -21,8 +21,9 @@ import (
 
 	"github.com/prometheus/statsd_exporter/pkg/gatherer"
 
-	"github.com/prometheus/statsd_exporter/pkg/parser"
 	"github.com/stretchr/testify/require"
+
+	"github.com/prometheus/statsd_exporter/pkg/parser"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -190,44 +191,52 @@ func TestInconsistentLabelSets(t *testing.T) {
 	go func() {
 		c := event.Events{
 			&event.CounterEvent{
-				CMetricName: "counter_test",
-				CValue:      1,
-				CLabels:     firstLabelSet,
+				CMetricName:    "counter_test",
+				CValue:         1,
+				SamplingFactor: 1,
+				CLabels:        firstLabelSet,
 			},
 			&event.CounterEvent{
-				CMetricName: "counter_test",
-				CValue:      1,
-				CLabels:     secondLabelSet,
+				CMetricName:    "counter_test",
+				CValue:         1,
+				SamplingFactor: 1,
+				CLabels:        secondLabelSet,
 			},
 			&event.GaugeEvent{
-				GMetricName: "gauge_test",
-				GValue:      1,
-				GLabels:     firstLabelSet,
+				GMetricName:    "gauge_test",
+				GValue:         1,
+				SamplingFactor: 1,
+				GLabels:        firstLabelSet,
 			},
 			&event.GaugeEvent{
-				GMetricName: "gauge_test",
-				GValue:      1,
-				GLabels:     secondLabelSet,
+				GMetricName:    "gauge_test",
+				GValue:         1,
+				SamplingFactor: 1,
+				GLabels:        secondLabelSet,
 			},
 			&event.ObserverEvent{
-				OMetricName: "histogram.test",
-				OValue:      1,
-				OLabels:     firstLabelSet,
+				OMetricName:    "histogram.test",
+				OValue:         1,
+				SamplingFactor: 1,
+				OLabels:        firstLabelSet,
 			},
 			&event.ObserverEvent{
-				OMetricName: "histogram.test",
-				OValue:      1,
-				OLabels:     secondLabelSet,
+				OMetricName:    "histogram.test",
+				OValue:         1,
+				SamplingFactor: 1,
+				OLabels:        secondLabelSet,
 			},
 			&event.ObserverEvent{
-				OMetricName: "summary_test",
-				OValue:      1,
-				OLabels:     firstLabelSet,
+				OMetricName:    "summary_test",
+				OValue:         1,
+				SamplingFactor: 1,
+				OLabels:        firstLabelSet,
 			},
 			&event.ObserverEvent{
-				OMetricName: "summary_test",
-				OValue:      1,
-				OLabels:     secondLabelSet,
+				OMetricName:    "summary_test",
+				OValue:         1,
+				SamplingFactor: 1,
+				OLabels:        secondLabelSet,
 			},
 		}
 		events <- c
@@ -276,14 +285,16 @@ func TestLabelParsing(t *testing.T) {
 	go func() {
 		c := event.Events{
 			&event.CounterEvent{
-				CMetricName: "counter.test.200",
-				CValue:      1,
-				CLabels:     make(map[string]string),
+				CMetricName:    "counter.test.200",
+				CValue:         1,
+				SamplingFactor: 1,
+				CLabels:        make(map[string]string),
 			},
 			&event.CounterEvent{
-				CMetricName: "counter.test.300",
-				CValue:      1,
-				CLabels:     make(map[string]string),
+				CMetricName:    "counter.test.300",
+				CValue:         1,
+				SamplingFactor: 1,
+				CLabels:        make(map[string]string),
 			},
 		}
 		events <- c
@@ -335,12 +346,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{1},
 			in: event.Events{
 				&event.CounterEvent{
-					CMetricName: "cvg_test",
-					CValue:      1,
+					CMetricName:    "cvg_test",
+					SamplingFactor: 1,
+					CValue:         1,
 				},
 				&event.GaugeEvent{
-					GMetricName: "cvg_test",
-					GValue:      2,
+					GMetricName:    "cvg_test",
+					SamplingFactor: 1,
+					GValue:         2,
 				},
 			},
 		},
@@ -349,19 +362,22 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{1, 2},
 			in: event.Events{
 				&event.CounterEvent{
-					CMetricName: "cvgl_test",
-					CValue:      1,
-					CLabels:     map[string]string{"tag": "1"},
+					CMetricName:    "cvgl_test",
+					CValue:         1,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag": "1"},
 				},
 				&event.CounterEvent{
-					CMetricName: "cvgl_test",
-					CValue:      2,
-					CLabels:     map[string]string{"tag": "2"},
+					CMetricName:    "cvgl_test",
+					CValue:         2,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag": "2"},
 				},
 				&event.GaugeEvent{
-					GMetricName: "cvgl_test",
-					GValue:      3,
-					GLabels:     map[string]string{"tag": "1"},
+					GMetricName:    "cvgl_test",
+					GValue:         3,
+					SamplingFactor: 1,
+					GLabels:        map[string]string{"tag": "1"},
 				},
 			},
 		},
@@ -370,19 +386,22 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{3},
 			in: event.Events{
 				&event.CounterEvent{
-					CMetricName: "cvgsl_test",
-					CValue:      1,
-					CLabels:     map[string]string{"tag": "1"},
+					CMetricName:    "cvgsl_test",
+					CValue:         1,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag": "1"},
 				},
 				&event.CounterEvent{
-					CMetricName: "cvgsl_test",
-					CValue:      2,
-					CLabels:     map[string]string{"tag": "1"},
+					CMetricName:    "cvgsl_test",
+					CValue:         2,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag": "1"},
 				},
 				&event.GaugeEvent{
-					GMetricName: "cvgsl_test",
-					GValue:      3,
-					GLabels:     map[string]string{"tag": "1"},
+					GMetricName:    "cvgsl_test",
+					GValue:         3,
+					SamplingFactor: 1,
+					GLabels:        map[string]string{"tag": "1"},
 				},
 			},
 		},
@@ -391,12 +410,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{2},
 			in: event.Events{
 				&event.GaugeEvent{
-					GMetricName: "gvc_test",
-					GValue:      2,
+					GMetricName:    "gvc_test",
+					GValue:         2,
+					SamplingFactor: 1,
 				},
 				&event.CounterEvent{
-					CMetricName: "gvc_test",
-					CValue:      1,
+					CMetricName:    "gvc_test",
+					CValue:         1,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -405,12 +426,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{2},
 			in: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "histogram_test1",
-					OValue:      2,
+					OMetricName:    "histogram_test1",
+					OValue:         2,
+					SamplingFactor: 1,
 				},
 				&event.CounterEvent{
-					CMetricName: "histogram_test1_count",
-					CValue:      1,
+					CMetricName:    "histogram_test1_count",
+					CValue:         1,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -419,12 +442,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{2},
 			in: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "histogram_test1",
-					OValue:      2,
+					OMetricName:    "histogram_test1",
+					OValue:         2,
+					SamplingFactor: 1,
 				},
 				&event.CounterEvent{
-					CMetricName: "histogram_test1_sum",
-					CValue:      1,
+					CMetricName:    "histogram_test1_sum",
+					CValue:         1,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -433,12 +458,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{2},
 			in: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "histogram_test1",
-					OValue:      2,
+					OMetricName:    "histogram_test1",
+					OValue:         2,
+					SamplingFactor: 1,
 				},
 				&event.CounterEvent{
-					CMetricName: "histogram_test1_bucket",
-					CValue:      1,
+					CMetricName:    "histogram_test1_bucket",
+					CValue:         1,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -447,12 +474,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{2},
 			in: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "histogram_test1",
-					OValue:      2,
+					OMetricName:    "histogram_test1",
+					OValue:         2,
+					SamplingFactor: 1,
 				},
 				&event.GaugeEvent{
-					GMetricName: "histogram_test1_sum",
-					GValue:      1,
+					GMetricName:    "histogram_test1_sum",
+					GValue:         1,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -461,12 +490,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{2},
 			in: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "histogram_test1",
-					OValue:      2,
+					OMetricName:    "histogram_test1",
+					OValue:         2,
+					SamplingFactor: 1,
 				},
 				&event.GaugeEvent{
-					GMetricName: "histogram_test1_count",
-					GValue:      1,
+					GMetricName:    "histogram_test1_count",
+					GValue:         1,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -475,12 +506,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{1},
 			in: event.Events{
 				&event.CounterEvent{
-					CMetricName: "histogram_test1",
-					CValue:      1,
+					CMetricName:    "histogram_test1",
+					CValue:         1,
+					SamplingFactor: 1,
 				},
 				&event.ObserverEvent{
-					OMetricName: "histogram.test1",
-					OValue:      2,
+					OMetricName:    "histogram.test1",
+					OValue:         2,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -489,12 +522,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{1},
 			in: event.Events{
 				&event.CounterEvent{
-					CMetricName: "histogram_test1_sum",
-					CValue:      1,
+					CMetricName:    "histogram_test1_sum",
+					CValue:         1,
+					SamplingFactor: 1,
 				},
 				&event.ObserverEvent{
-					OMetricName: "histogram.test1",
-					OValue:      2,
+					OMetricName:    "histogram.test1",
+					OValue:         2,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -503,12 +538,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{1},
 			in: event.Events{
 				&event.CounterEvent{
-					CMetricName: "histogram_test2_count",
-					CValue:      1,
+					CMetricName:    "histogram_test2_count",
+					CValue:         1,
+					SamplingFactor: 1,
 				},
 				&event.ObserverEvent{
-					OMetricName: "histogram.test2",
-					OValue:      2,
+					OMetricName:    "histogram.test2",
+					OValue:         2,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -517,12 +554,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{1},
 			in: event.Events{
 				&event.CounterEvent{
-					CMetricName: "histogram_test3_bucket",
-					CValue:      1,
+					CMetricName:    "histogram_test3_bucket",
+					CValue:         1,
+					SamplingFactor: 1,
 				},
 				&event.ObserverEvent{
-					OMetricName: "histogram.test3",
-					OValue:      2,
+					OMetricName:    "histogram.test3",
+					OValue:         2,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -531,12 +570,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{1},
 			in: event.Events{
 				&event.CounterEvent{
-					CMetricName: "cvsq_test",
-					CValue:      1,
+					CMetricName:    "cvsq_test",
+					CValue:         1,
+					SamplingFactor: 1,
 				},
 				&event.ObserverEvent{
-					OMetricName: "cvsq_test",
-					OValue:      2,
+					OMetricName:    "cvsq_test",
+					OValue:         2,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -545,12 +586,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{1},
 			in: event.Events{
 				&event.CounterEvent{
-					CMetricName: "cvsc_count",
-					CValue:      1,
+					CMetricName:    "cvsc_count",
+					CValue:         1,
+					SamplingFactor: 1,
 				},
 				&event.ObserverEvent{
-					OMetricName: "cvsc",
-					OValue:      2,
+					OMetricName:    "cvsc",
+					OValue:         2,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -559,12 +602,14 @@ func TestConflictingMetrics(t *testing.T) {
 			expected: []float64{1},
 			in: event.Events{
 				&event.CounterEvent{
-					CMetricName: "cvss_sum",
-					CValue:      1,
+					CMetricName:    "cvss_sum",
+					CValue:         1,
+					SamplingFactor: 1,
 				},
 				&event.ObserverEvent{
-					OMetricName: "cvss",
-					OValue:      2,
+					OMetricName:    "cvss",
+					OValue:         2,
+					SamplingFactor: 1,
 				},
 			},
 		},
@@ -785,8 +830,9 @@ func TestHistogramUnits(t *testing.T) {
 	name := "foo"
 	c := event.Events{
 		&event.ObserverEvent{
-			OMetricName: name,
-			OValue:      .300,
+			OMetricName:    name,
+			SamplingFactor: 1,
+			OValue:         .300,
 		},
 	}
 	events <- c
@@ -823,14 +869,16 @@ func TestCounterIncrement(t *testing.T) {
 	}
 	c := event.Events{
 		&event.CounterEvent{
-			CMetricName: name,
-			CValue:      1,
-			CLabels:     labels,
+			CMetricName:    name,
+			CValue:         1,
+			SamplingFactor: 1,
+			CLabels:        labels,
 		},
 		&event.CounterEvent{
-			CMetricName: name,
-			CValue:      1,
-			CLabels:     labels,
+			CMetricName:    name,
+			CValue:         1,
+			SamplingFactor: 1,
+			CLabels:        labels,
 		},
 	}
 	events <- c
@@ -880,14 +928,16 @@ func TestScaledMapping(t *testing.T) {
 	promLabels := map[string]string{"service": "foo"}
 	c := event.Events{
 		&event.CounterEvent{
-			CMetricName: statsdName,
-			CValue:      100,
-			CLabels:     statsdLabels,
+			CMetricName:    statsdName,
+			CValue:         100,
+			CLabels:        statsdLabels,
+			SamplingFactor: 1.0,
 		},
 		&event.CounterEvent{
-			CMetricName: statsdName,
-			CValue:      200,
-			CLabels:     statsdLabels,
+			CMetricName:    statsdName,
+			CValue:         200,
+			CLabels:        statsdLabels,
+			SamplingFactor: 1.0,
 		},
 	}
 	events <- c
@@ -1104,9 +1154,10 @@ mappings:
 	promName := "example_metric"
 	c := event.Events{
 		&event.ObserverEvent{
-			OMetricName: statsdName,
-			OValue:      7,
-			OLabels:     map[string]string{},
+			OMetricName:    statsdName,
+			OValue:         7,
+			SamplingFactor: 1,
+			OLabels:        map[string]string{},
 		},
 	}
 	events <- c

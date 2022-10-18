@@ -20,8 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/statsd_exporter/pkg/parser"
 	"github.com/stretchr/testify/require"
+
+	"github.com/prometheus/statsd_exporter/pkg/parser"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -48,9 +49,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:2|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      2,
-					CLabels:     map[string]string{},
+					CMetricName:    "foo",
+					CValue:         2,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -58,9 +60,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:3|g",
 			out: event.Events{
 				&event.GaugeEvent{
-					GMetricName: "foo",
-					GValue:      3,
-					GLabels:     map[string]string{},
+					GMetricName:    "foo",
+					GValue:         3,
+					SamplingFactor: 1,
+					GLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -68,9 +71,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:3|g|@0.2",
 			out: event.Events{
 				&event.GaugeEvent{
-					GMetricName: "foo",
-					GValue:      3,
-					GLabels:     map[string]string{},
+					GMetricName:    "foo",
+					GValue:         3,
+					SamplingFactor: 0.2,
+					GLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -78,10 +82,11 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:-10|g",
 			out: event.Events{
 				&event.GaugeEvent{
-					GMetricName: "foo",
-					GValue:      -10,
-					GRelative:   true,
-					GLabels:     map[string]string{},
+					GMetricName:    "foo",
+					GValue:         -10,
+					GRelative:      true,
+					SamplingFactor: 1,
+					GLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -89,9 +94,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:200|ms",
 			out: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      0.2,
-					OLabels:     map[string]string{},
+					OMetricName:    "foo",
+					OValue:         0.2,
+					SamplingFactor: 1,
+					OLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -99,9 +105,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:200|h",
 			out: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      200,
-					OLabels:     map[string]string{},
+					OMetricName:    "foo",
+					OValue:         200,
+					SamplingFactor: 1,
+					OLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -109,9 +116,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:200|d",
 			out: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      200,
-					OLabels:     map[string]string{},
+					OMetricName:    "foo",
+					OValue:         200,
+					SamplingFactor: 1,
+					OLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -119,29 +127,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:0.01|d|@0.2|#tag1:bar,#tag2:baz",
 			out: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      0.01,
-					OLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
-				},
-				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      0.01,
-					OLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
-				},
-				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      0.01,
-					OLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
-				},
-				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      0.01,
-					OLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
-				},
-				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      0.01,
-					OLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
+					OMetricName:    "foo",
+					OValue:         0.01,
+					SamplingFactor: 0.2,
+					OLabels:        map[string]string{"tag1": "bar", "tag2": "baz"},
 				},
 			},
 		}, {
@@ -149,9 +138,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo#tag1=bar,tag2=baz:100|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      100,
-					CLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
+					CMetricName:    "foo",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag1": "bar", "tag2": "baz"},
 				},
 			},
 		}, {
@@ -159,9 +149,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo#09digits=0,tag.with.dots=1:100|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      100,
-					CLabels:     map[string]string{"_09digits": "0", "tag_with_dots": "1"},
+					CMetricName:    "foo",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"_09digits": "0", "tag_with_dots": "1"},
 				},
 			},
 		}, {
@@ -169,9 +160,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo,tag1=bar,tag2=baz:100|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      100,
-					CLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
+					CMetricName:    "foo",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag1": "bar", "tag2": "baz"},
 				},
 			},
 		}, {
@@ -179,9 +171,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo.[tag1=bar,tag2=baz]test:100|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo.test",
-					CValue:      100,
-					CLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
+					CMetricName:    "foo.test",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag1": "bar", "tag2": "baz"},
 				},
 			},
 		}, {
@@ -189,9 +182,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo.test[tag1=bar,tag2=baz]:100|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo.test",
-					CValue:      100,
-					CLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
+					CMetricName:    "foo.test",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag1": "bar", "tag2": "baz"},
 				},
 			},
 		}, {
@@ -199,9 +193,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "[tag1=bar,tag2=baz]foo.test:100|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo.test",
-					CValue:      100,
-					CLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
+					CMetricName:    "foo.test",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag1": "bar", "tag2": "baz"},
 				},
 			},
 		}, {
@@ -209,9 +204,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo.[]test:100|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo.test",
-					CValue:      100,
-					CLabels:     map[string]string{},
+					CMetricName:    "foo.test",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -219,9 +215,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo.[tag1,tag2]test:100|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo.test",
-					CValue:      100,
-					CLabels:     map[string]string{},
+					CMetricName:    "foo.test",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -229,9 +226,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "[tag1=bar,tag2=bazfoo.test:100|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "[tag1=bar,tag2=bazfoo.test",
-					CValue:      100,
-					CLabels:     map[string]string{},
+					CMetricName:    "[tag1=bar,tag2=bazfoo.test",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -239,9 +237,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "tag1=bar,tag2=baz]foo.test:100|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "tag1=bar,tag2=baz]foo.test",
-					CValue:      100,
-					CLabels:     map[string]string{},
+					CMetricName:    "tag1=bar,tag2=baz]foo.test",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -249,9 +248,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo,09digits=0,tag.with.dots=1:100|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      100,
-					CLabels:     map[string]string{"_09digits": "0", "tag_with_dots": "1"},
+					CMetricName:    "foo",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"_09digits": "0", "tag_with_dots": "1"},
 				},
 			},
 		}, {
@@ -259,9 +259,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:100|c|#tag1:bar,tag2:baz",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      100,
-					CLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
+					CMetricName:    "foo",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag1": "bar", "tag2": "baz"},
 				},
 			},
 		}, {
@@ -269,9 +270,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:100|c|#tag1:bar,#tag2:baz",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      100,
-					CLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
+					CMetricName:    "foo",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag1": "bar", "tag2": "baz"},
 				},
 			},
 		}, {
@@ -279,9 +281,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:100|c|#09digits:0,tag.with.dots:1",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      100,
-					CLabels:     map[string]string{"_09digits": "0", "tag_with_dots": "1"},
+					CMetricName:    "foo",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"_09digits": "0", "tag_with_dots": "1"},
 				},
 			},
 		}, {
@@ -289,9 +292,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:100|c|#tag_without_a_value",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      100,
-					CLabels:     map[string]string{},
+					CMetricName:    "foo",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -299,9 +303,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:100|c|#tag_without_a_value,tag:value",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      100,
-					CLabels:     map[string]string{"tag": "value"},
+					CMetricName:    "foo",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag": "value"},
 				},
 			},
 		}, {
@@ -309,9 +314,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:100|c|#tag:value,,",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      100,
-					CLabels:     map[string]string{"tag": "value"},
+					CMetricName:    "foo",
+					CValue:         100,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag": "value"},
 				},
 			},
 		}, {
@@ -319,9 +325,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:100|c|@0.1|#tag1:bar,#tag2:baz",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      1000,
-					CLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
+					CMetricName:    "foo",
+					CValue:         100,
+					SamplingFactor: 0.1,
+					CLabels:        map[string]string{"tag1": "bar", "tag2": "baz"},
 				},
 			},
 		}, {
@@ -345,29 +352,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:0.01|h|@0.2|#tag1:bar,#tag2:baz",
 			out: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      0.01,
-					OLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
-				},
-				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      0.01,
-					OLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
-				},
-				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      0.01,
-					OLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
-				},
-				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      0.01,
-					OLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
-				},
-				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      0.01,
-					OLabels:     map[string]string{"tag1": "bar", "tag2": "baz"},
+					OMetricName:    "foo",
+					OValue:         0.01,
+					SamplingFactor: 0.2,
+					OLabels:        map[string]string{"tag1": "bar", "tag2": "baz"},
 				},
 			},
 		}, {
@@ -375,9 +363,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:100|c|@0.1|#tag1:foo:bar",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      1000,
-					CLabels:     map[string]string{"tag1": "foo:bar"},
+					CMetricName:    "foo",
+					CValue:         100,
+					SamplingFactor: 0.1,
+					CLabels:        map[string]string{"tag1": "foo:bar"},
 				},
 			},
 		}, {
@@ -391,9 +380,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:200|c|#tag:value\nfoo:300|c|#tag:\xc3\x28invalid",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      200,
-					CLabels:     map[string]string{"tag": "value"},
+					CMetricName:    "foo",
+					CValue:         200,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{"tag": "value"},
 				},
 			},
 		}, {
@@ -401,50 +391,47 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:200|ms:300|ms:5|c|@0.1:6|g\nbar:1|c:5|ms",
 			out: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      .200,
-					OLabels:     map[string]string{},
+					OMetricName:    "foo",
+					OValue:         .200,
+					SamplingFactor: 1,
+					OLabels:        map[string]string{},
 				},
 				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      .300,
-					OLabels:     map[string]string{},
+					OMetricName:    "foo",
+					OValue:         .300,
+					SamplingFactor: 1,
+					OLabels:        map[string]string{},
 				},
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      50,
-					CLabels:     map[string]string{},
+					CMetricName:    "foo",
+					CValue:         5,
+					SamplingFactor: 0.1,
+					CLabels:        map[string]string{},
 				},
 				&event.GaugeEvent{
-					GMetricName: "foo",
-					GValue:      6,
-					GLabels:     map[string]string{},
+					GMetricName:    "foo",
+					GValue:         6,
+					SamplingFactor: 1,
+					GLabels:        map[string]string{},
 				},
 				&event.CounterEvent{
-					CMetricName: "bar",
-					CValue:      1,
-					CLabels:     map[string]string{},
+					CMetricName:    "bar",
+					CValue:         1,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{},
 				},
 				&event.ObserverEvent{
-					OMetricName: "bar",
-					OValue:      .005,
-					OLabels:     map[string]string{},
+					OMetricName:    "bar",
+					OValue:         .005,
+					SamplingFactor: 1,
+					OLabels:        map[string]string{},
 				},
 			},
 		}, {
 			name: "timings with sampling factor",
 			in:   "foo.timing:0.5|ms|@0.1",
 			out: event.Events{
-				&event.ObserverEvent{OMetricName: "foo.timing", OValue: 0.0005, OLabels: map[string]string{}},
-				&event.ObserverEvent{OMetricName: "foo.timing", OValue: 0.0005, OLabels: map[string]string{}},
-				&event.ObserverEvent{OMetricName: "foo.timing", OValue: 0.0005, OLabels: map[string]string{}},
-				&event.ObserverEvent{OMetricName: "foo.timing", OValue: 0.0005, OLabels: map[string]string{}},
-				&event.ObserverEvent{OMetricName: "foo.timing", OValue: 0.0005, OLabels: map[string]string{}},
-				&event.ObserverEvent{OMetricName: "foo.timing", OValue: 0.0005, OLabels: map[string]string{}},
-				&event.ObserverEvent{OMetricName: "foo.timing", OValue: 0.0005, OLabels: map[string]string{}},
-				&event.ObserverEvent{OMetricName: "foo.timing", OValue: 0.0005, OLabels: map[string]string{}},
-				&event.ObserverEvent{OMetricName: "foo.timing", OValue: 0.0005, OLabels: map[string]string{}},
-				&event.ObserverEvent{OMetricName: "foo.timing", OValue: 0.0005, OLabels: map[string]string{}},
+				&event.ObserverEvent{OMetricName: "foo.timing", OValue: 0.0005, SamplingFactor: 0.1, OLabels: map[string]string{}},
 			},
 		}, {
 			name: "bad line",
@@ -460,9 +447,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:1|c|@bar",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      1,
-					CLabels:     map[string]string{},
+					CMetricName:    "foo",
+					CValue:         1,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -470,9 +458,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:2|c|@0",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "foo",
-					CValue:      2,
-					CLabels:     map[string]string{},
+					CMetricName:    "foo",
+					CValue:         2,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -496,9 +485,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "valid_utf8:1|c\ninvalid\xc3\x28utf8:1|c",
 			out: event.Events{
 				&event.CounterEvent{
-					CMetricName: "valid_utf8",
-					CValue:      1,
-					CLabels:     map[string]string{},
+					CMetricName:    "valid_utf8",
+					CValue:         1,
+					SamplingFactor: 1,
+					CLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -506,9 +496,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:200|ms",
 			out: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      0.2,
-					OLabels:     map[string]string{},
+					OMetricName:    "foo",
+					OValue:         0.2,
+					SamplingFactor: 1,
+					OLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -516,9 +507,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:200|h",
 			out: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      200,
-					OLabels:     map[string]string{},
+					OMetricName:    "foo",
+					OValue:         200,
+					SamplingFactor: 1,
+					OLabels:        map[string]string{},
 				},
 			},
 		}, {
@@ -526,9 +518,10 @@ func TestHandlePacket(t *testing.T) {
 			in:   "foo:200|d",
 			out: event.Events{
 				&event.ObserverEvent{
-					OMetricName: "foo",
-					OValue:      200,
-					OLabels:     map[string]string{},
+					OMetricName:    "foo",
+					OValue:         200,
+					SamplingFactor: 1,
+					OLabels:        map[string]string{},
 				},
 			},
 		},

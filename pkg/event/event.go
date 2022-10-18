@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/prometheus/statsd_exporter/pkg/clock"
 	"github.com/prometheus/statsd_exporter/pkg/mapper"
 )
@@ -27,41 +28,48 @@ type Event interface {
 	Value() float64
 	Labels() map[string]string
 	MetricType() mapper.MetricType
+	Count() int64
 }
 
 type CounterEvent struct {
-	CMetricName string
-	CValue      float64
-	CLabels     map[string]string
+	CMetricName    string
+	CValue         float64
+	CLabels        map[string]string
+	SamplingFactor float64
 }
 
 func (c *CounterEvent) MetricName() string            { return c.CMetricName }
 func (c *CounterEvent) Value() float64                { return c.CValue }
 func (c *CounterEvent) Labels() map[string]string     { return c.CLabels }
 func (c *CounterEvent) MetricType() mapper.MetricType { return mapper.MetricTypeCounter }
+func (c *CounterEvent) Count() int64                  { return int64(1 / c.SamplingFactor) }
 
 type GaugeEvent struct {
-	GMetricName string
-	GValue      float64
-	GRelative   bool
-	GLabels     map[string]string
+	GMetricName    string
+	GValue         float64
+	GRelative      bool
+	SamplingFactor float64
+	GLabels        map[string]string
 }
 
 func (g *GaugeEvent) MetricName() string            { return g.GMetricName }
 func (g *GaugeEvent) Value() float64                { return g.GValue }
 func (g *GaugeEvent) Labels() map[string]string     { return g.GLabels }
 func (g *GaugeEvent) MetricType() mapper.MetricType { return mapper.MetricTypeGauge }
+func (g *GaugeEvent) Count() int64                  { return int64(1 / g.SamplingFactor) }
 
 type ObserverEvent struct {
-	OMetricName string
-	OValue      float64
-	OLabels     map[string]string
+	OMetricName    string
+	OValue         float64
+	SamplingFactor float64
+	OLabels        map[string]string
 }
 
 func (o *ObserverEvent) MetricName() string            { return o.OMetricName }
 func (o *ObserverEvent) Value() float64                { return o.OValue }
 func (o *ObserverEvent) Labels() map[string]string     { return o.OLabels }
 func (o *ObserverEvent) MetricType() mapper.MetricType { return mapper.MetricTypeObserver }
+func (o *ObserverEvent) Count() int64                  { return int64(1 / o.SamplingFactor) }
 
 type Events []Event
 

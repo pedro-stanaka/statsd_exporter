@@ -154,7 +154,7 @@ func (b *Exporter) handleEvent(thisEvent event.Event) {
 
 		counter, err := b.Registry.GetCounter(metricName, prometheusLabels, help, mapping, b.MetricsCount)
 		if err == nil {
-			counter.Add(eventValue)
+			counter.Add(eventValue * float64(thisEvent.Count()))
 			b.EventStats.WithLabelValues("counter").Inc()
 		} else {
 			level.Debug(b.Logger).Log("msg", regErrF, "metric", metricName, "error", err)
@@ -189,7 +189,9 @@ func (b *Exporter) handleEvent(thisEvent event.Event) {
 		case mapper.ObserverTypeHistogram:
 			histogram, err := b.Registry.GetHistogram(metricName, prometheusLabels, help, mapping, b.MetricsCount)
 			if err == nil {
-				histogram.Observe(eventValue)
+				for i := int64(0); i < thisEvent.Count(); i++ {
+					histogram.Observe(eventValue)
+				}
 				b.EventStats.WithLabelValues("observer").Inc()
 			} else {
 				level.Debug(b.Logger).Log("msg", regErrF, "metric", metricName, "error", err)

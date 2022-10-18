@@ -61,32 +61,36 @@ func (p *Parser) EnableSignalFXParsing() {
 	p.SignalFXTagsEnabled = true
 }
 
-func buildEvent(statType, metric string, value float64, relative bool, labels map[string]string) (event.Event, error) {
+func buildEvent(statType, metric string, value float64, relative bool, samplingFactor float64, labels map[string]string) (event.Event, error) {
 	switch statType {
 	case "c":
 		return &event.CounterEvent{
-			CMetricName: metric,
-			CValue:      float64(value),
-			CLabels:     labels,
+			CMetricName:    metric,
+			CValue:         float64(value),
+			SamplingFactor: samplingFactor,
+			CLabels:        labels,
 		}, nil
 	case "g":
 		return &event.GaugeEvent{
-			GMetricName: metric,
-			GValue:      float64(value),
-			GRelative:   relative,
-			GLabels:     labels,
+			GMetricName:    metric,
+			GValue:         float64(value),
+			SamplingFactor: samplingFactor,
+			GRelative:      relative,
+			GLabels:        labels,
 		}, nil
 	case "ms":
 		return &event.ObserverEvent{
-			OMetricName: metric,
-			OValue:      float64(value) / 1000, // prometheus presumes seconds, statsd millisecond
-			OLabels:     labels,
+			OMetricName:    metric,
+			OValue:         float64(value) / 1000, // prometheus presumes seconds, statsd millisecond
+			SamplingFactor: samplingFactor,
+			OLabels:        labels,
 		}, nil
 	case "h", "d":
 		return &event.ObserverEvent{
-			OMetricName: metric,
-			OValue:      float64(value),
-			OLabels:     labels,
+			OMetricName:    metric,
+			SamplingFactor: samplingFactor,
+			OValue:         float64(value),
+			OLabels:        labels,
 		}, nil
 	case "s":
 		return nil, fmt.Errorf("no support for StatsD sets")
@@ -284,7 +288,7 @@ samples:
 			continue
 		}
 
-		multiplyEvents := 1
+		var samplingFactor float64 = 1
 		if len(components) >= 3 {
 			for _, component := range components[2:] {
 				if len(component) == 0 {
@@ -294,11 +298,11 @@ samples:
 				}
 			}
 
+			var err error
 			for _, component := range components[2:] {
 				switch component[0] {
 				case '@':
-
-					samplingFactor, err := strconv.ParseFloat(component[1:], 64)
+					samplingFactor, err = strconv.ParseFloat(component[1:], 64)
 					if err != nil {
 						level.Debug(logger).Log("msg", "Invalid sampling factor", "component", component[1:], "line", line)
 						sampleErrors.WithLabelValues("invalid_sample_factor").Inc()
@@ -309,10 +313,6 @@ samples:
 
 					if statType == "g" {
 						continue
-					} else if statType == "c" {
-						value /= samplingFactor
-					} else if statType == "ms" || statType == "h" || statType == "d" {
-						multiplyEvents = int(1 / samplingFactor)
 					}
 				case '#':
 					p.ParseDogStatsDTags(component[1:], labels, tagErrors, logger)
@@ -328,15 +328,13 @@ samples:
 			tagsReceived.Inc()
 		}
 
-		for i := 0; i < multiplyEvents; i++ {
-			event, err := buildEvent(statType, metric, value, relative, labels)
-			if err != nil {
-				level.Debug(logger).Log("msg", "Error building event", "line", line, "error", err)
-				sampleErrors.WithLabelValues("illegal_event").Inc()
-				continue
-			}
-			events = append(events, event)
+		event, err := buildEvent(statType, metric, value, relative, samplingFactor, labels)
+		if err != nil {
+			level.Debug(logger).Log("msg", "Error building event", "line", line, "error", err)
+			sampleErrors.WithLabelValues("illegal_event").Inc()
+			continue
 		}
+		events = append(events, event)
 	}
 	return events
 }
