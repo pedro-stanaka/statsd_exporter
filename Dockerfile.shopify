@@ -6,14 +6,16 @@ WORKDIR /go/github.com/Shopify/statsd-exporter/
 
 RUN go mod download
 
+RUN apk add --no-cache git make curl
+
 COPY . .
 
-RUN CGO_ENABLED=0 go build -o bin/statsd_exporter
+RUN make build
 
 
 FROM gcr.io/shopify-base-images/alpine:latest
-COPY --from=builder /go/github.com/Shopify/statsd-exporter/bin/statsd_exporter /bin/statsd_exporter
+COPY --from=builder /go/github.com/Shopify/statsd-exporter/statsd-exporter /usr/bin/statsd_exporter
 
 USER nobody
 EXPOSE      9102 9125 9125/udp
-ENTRYPOINT  [ "/bin/statsd_exporter" ]
+ENTRYPOINT  [ "/usr/bin/statsd_exporter" ]
