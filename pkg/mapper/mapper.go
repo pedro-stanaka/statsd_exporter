@@ -95,9 +95,11 @@ func (m *MetricMapper) InitFromYAMLString(fileContents string) error {
 		n.Defaults.HistogramOptions.Buckets = prometheus.DefBuckets
 	}
 	if n.Defaults.HistogramOptions.NativeHistogramBucketFactor == 0 {
+		level.Info(m.Logger).Log("msg", "native_histogram_bucket_factor not set, using default value (1.1)")
 		n.Defaults.HistogramOptions.NativeHistogramBucketFactor = 1.1
 	}
 	if n.Defaults.HistogramOptions.NativeHistogramMaxBuckets <= 0 {
+		level.Info(m.Logger).Log("msg", "native_histogram_max_buckets not set, using default value (256)")
 		n.Defaults.HistogramOptions.NativeHistogramMaxBuckets = 256
 	}
 

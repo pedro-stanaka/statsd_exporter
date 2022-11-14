@@ -109,7 +109,7 @@ mappings:
 		"foo.bar.baz",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -173,7 +173,7 @@ mappings:
 		"foo.bar.baz",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -310,7 +310,7 @@ mappings:
 		"foo.bar.baz",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -337,7 +337,7 @@ mappings:
 		"metric.bbb",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -365,7 +365,7 @@ mappings:
 		"metric.bbb",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -391,7 +391,7 @@ mappings:
 		"metric.a.b.c.d.e.f.g.h.i.j.k.l",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -418,7 +418,7 @@ mappings:
 		"metric.a.b.c.d.e.f.g.h.i.j.k.l",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -444,7 +444,7 @@ mappings:
 		"metric.a.b.c.d.e.f.g.h.i.j.k.l",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -471,7 +471,7 @@ mappings:
 		"metric.a.b.c.d.e.f.g.h.i.j.k.l",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -508,7 +508,7 @@ mappings:
 		"metric.a.b.c.d.e.f.g.h.i.j.k.l",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -546,7 +546,7 @@ mappings:
 		"metric.a.b.c.d.e.f.g.h.i.j.k.l",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -567,7 +567,7 @@ mappings:` + duplicateRules(100, ruleTemplateSingleMatchGlob)
 		"metric100.a",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -616,7 +616,7 @@ mappings:` + duplicateRules(10, ruleTemplateSingleMatchRegex)
 		"metric5.a",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -640,7 +640,7 @@ mappings:` + duplicateRules(10, ruleTemplateSingleMatchRegex)
 	}
 
 	for _, cacheType := range []string{"lru", "random"} {
-		mapper := MetricMapper{}
+		mapper := newMetricMapper()
 		var cache MetricMapperCache
 		switch cacheType {
 		case "lru":
@@ -651,7 +651,7 @@ mappings:` + duplicateRules(10, ruleTemplateSingleMatchRegex)
 		mapper.UseCache(cache)
 
 		b.Run(cacheType, func(b *testing.B) {
-			mapper := MetricMapper{}
+			mapper := newMetricMapper()
 			err := mapper.InitFromYAMLString(config)
 			if err != nil {
 				b.Fatalf("Config load error: %s %s", config, err)
@@ -667,6 +667,12 @@ mappings:` + duplicateRules(10, ruleTemplateSingleMatchRegex)
 	}
 }
 
+func newMetricMapper() MetricMapper {
+	return MetricMapper{
+		Logger: log.NewNopLogger(),
+	}
+}
+
 func BenchmarkGlob100Rules(b *testing.B) {
 	config := `---
 mappings:` + duplicateRules(100, ruleTemplateSingleMatchGlob)
@@ -674,7 +680,7 @@ mappings:` + duplicateRules(100, ruleTemplateSingleMatchGlob)
 		"metric100.a",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -721,7 +727,7 @@ mappings:` + duplicateRules(100, ruleTemplateSingleMatchGlob)
 		"metricnomatchy.a",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -744,7 +750,7 @@ mappings:` + duplicateRules(100, ruleTemplateSingleMatchGlob)
 		"metricnomatchy.a",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -767,7 +773,7 @@ mappings:` + duplicateRules(100, ruleTemplateSingleMatchRegex)
 		"metric50.a",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -790,7 +796,7 @@ mappings:` + duplicateRules(100, ruleTemplateSingleMatchRegex)
 		"metric100.a",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -811,7 +817,7 @@ mappings:` + duplicateRules(100, ruleTemplateMultipleMatchGlob)
 		"metric50.a.b.c.d.e.f.g.h.i.j.k.l",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -860,7 +866,7 @@ mappings:` + duplicateRules(100, ruleTemplateMultipleMatchRegex)
 		"metric50.a.b.c.d.e.f.g.h.i.j.k.l",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)
@@ -883,7 +889,7 @@ mappings:` + duplicateRules(100, ruleTemplateMultipleMatchRegex)
 		"metric100.a.b.c.d.e.f.g.h.i.j.k.l",
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	err := mapper.InitFromYAMLString(config)
 	if err != nil {
 		b.Fatalf("Config load error: %s %s", config, err)

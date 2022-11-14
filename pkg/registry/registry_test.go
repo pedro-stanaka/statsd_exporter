@@ -16,6 +16,8 @@ package registry
 import (
 	"testing"
 
+	"github.com/go-kit/log"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/stretchr/testify/require"
@@ -102,7 +104,9 @@ mappings:
 }
 
 func newTestMapperWithCache(cacheType string, size int) *mapper.MetricMapper {
-	mapr := mapper.MetricMapper{}
+	mapr := mapper.MetricMapper{
+		Logger: log.NewNopLogger(),
+	}
 	var cache mapper.MetricMapperCache
 	switch cacheType {
 	case "lru":

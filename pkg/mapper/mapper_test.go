@@ -40,7 +40,7 @@ type mappings []struct {
 }
 
 func newTestMapperWithCache(cacheType string, size int) *MetricMapper {
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	var cache MetricMapperCache
 	switch cacheType {
 	case "lru":
@@ -1532,7 +1532,7 @@ mappings:
 		},
 	}
 
-	mapper := MetricMapper{}
+	mapper := newMetricMapper()
 	cache, _ := lru.NewMetricMapperLRUCache(mapper.Registerer, 1000)
 	mapper.UseCache(cache)
 
@@ -1701,7 +1701,7 @@ mappings:
 			t.Fatalf("Missing testName in scenario %+v", scenario)
 		}
 		t.Run(scenario.testName, func(t *testing.T) {
-			mapper := MetricMapper{}
+			mapper := newMetricMapper()
 			err := mapper.InitFromYAMLString(scenario.config)
 			if err != nil && !scenario.configBad {
 				t.Fatalf("%d. Config load error: %s %s", i, scenario.config, err)

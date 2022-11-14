@@ -655,7 +655,7 @@ mappings:
   ttl: 2s
 `
 	// Create mapper from config and start an Exporter with a synchronous channel
-	testMapper := &mapper.MetricMapper{}
+	testMapper := newMetricMapper()
 	err := testMapper.InitFromYAMLString(config)
 	if err != nil {
 		t.Fatalf("Config load error: %s %s", config, err)
@@ -747,6 +747,12 @@ mappings:
 	}
 	if foobarValue != nil {
 		t.Fatalf("Gauge `foobar` should not be gathered after expiration")
+	}
+}
+
+func newMetricMapper() *mapper.MetricMapper {
+	return &mapper.MetricMapper{
+		Logger: log.NewNopLogger(),
 	}
 }
 

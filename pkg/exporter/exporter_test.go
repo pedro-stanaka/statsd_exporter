@@ -164,9 +164,9 @@ func TestNegativeCounter(t *testing.T) {
 	errorCounter := errorEventStats.WithLabelValues("illegal_negative_counter")
 	prev := getTelemetryCounterValue(errorCounter)
 
-	testMapper := mapper.MetricMapper{}
+	testMapper := newMetricMapper()
 
-	ex := NewExporter(prometheus.DefaultRegisterer, &testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
+	ex := NewExporter(prometheus.DefaultRegisterer, testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
 	ex.Listen(events)
 
 	updated := getTelemetryCounterValue(errorCounter)
@@ -249,7 +249,9 @@ mappings:
   timer_type: histogram
   name: "histogram_test"
 `
-	testMapper := &mapper.MetricMapper{}
+	testMapper := &mapper.MetricMapper{
+		Logger: log.NewNopLogger(),
+	}
 	err := testMapper.InitFromYAMLString(config)
 	if err != nil {
 		t.Fatalf("Config load error: %s %s", config, err)
@@ -309,7 +311,9 @@ mappings:
     code: $1
 `
 
-	testMapper := &mapper.MetricMapper{}
+	testMapper := &mapper.MetricMapper{
+		Logger: log.NewNopLogger(),
+	}
 	err := testMapper.InitFromYAMLString(config)
 	if err != nil {
 		t.Fatalf("Config load error: %s %s", config, err)
@@ -623,7 +627,9 @@ mappings:
 `
 	for _, s := range scenarios {
 		t.Run(s.name, func(t *testing.T) {
-			testMapper := &mapper.MetricMapper{}
+			testMapper := &mapper.MetricMapper{
+				Logger: log.NewNopLogger(),
+			}
 			err := testMapper.InitFromYAMLString(config)
 			if err != nil {
 				t.Fatalf("Config load error: %s %s", config, err)
@@ -682,7 +688,7 @@ mappings:
   match_type: regex
   name: "${1}"
 `
-	testMapper := &mapper.MetricMapper{}
+	testMapper := newMetricMapper()
 	err := testMapper.InitFromYAMLString(config)
 	if err != nil {
 		t.Fatalf("Config load error: %s %s", config, err)
@@ -697,6 +703,12 @@ mappings:
 	updated := getTelemetryCounterValue(errorCounter)
 	if updated-prev != 1 {
 		t.Fatal("Empty metric name error event not counted")
+	}
+}
+
+func newMetricMapper() *mapper.MetricMapper {
+	return &mapper.MetricMapper{
+		Logger: log.NewNopLogger(),
 	}
 }
 
@@ -754,7 +766,7 @@ func TestInvalidUtf8InDatadogTagValue(t *testing.T) {
 		}
 	}()
 
-	testMapper := mapper.MetricMapper{}
+	testMapper := newMetricMapper()
 
 	require.Eventually(t, func() bool {
 		fmt.Println(len(events))
@@ -764,7 +776,7 @@ func TestInvalidUtf8InDatadogTagValue(t *testing.T) {
 	close(packets)
 	close(events)
 
-	ex := NewExporter(prometheus.DefaultRegisterer, &testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
+	ex := NewExporter(prometheus.DefaultRegisterer, testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
 	ex.Listen(events)
 }
 
@@ -775,9 +787,9 @@ func TestSummaryWithQuantilesEmptyMapping(t *testing.T) {
 	// Start exporter with a synchronous channel
 	events := make(chan event.Events)
 	go func() {
-		testMapper := mapper.MetricMapper{}
+		testMapper := newMetricMapper()
 
-		ex := NewExporter(prometheus.DefaultRegisterer, &testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
+		ex := NewExporter(prometheus.DefaultRegisterer, testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
 		ex.Listen(events)
 	}()
 
@@ -819,8 +831,8 @@ func TestHistogramUnits(t *testing.T) {
 	// Start exporter with a synchronous channel
 	events := make(chan event.Events)
 	go func() {
-		testMapper := mapper.MetricMapper{}
-		ex := NewExporter(prometheus.DefaultRegisterer, &testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
+		testMapper := newMetricMapper()
+		ex := NewExporter(prometheus.DefaultRegisterer, testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
 		ex.Mapper.Defaults.ObserverType = mapper.ObserverTypeHistogram
 		ex.Listen(events)
 	}()
@@ -856,8 +868,8 @@ func TestCounterIncrement(t *testing.T) {
 	// Start exporter with a synchronous channel
 	events := make(chan event.Events)
 	go func() {
-		testMapper := mapper.MetricMapper{}
-		ex := NewExporter(prometheus.DefaultRegisterer, &testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
+		testMapper := newMetricMapper()
+		ex := NewExporter(prometheus.DefaultRegisterer, testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
 		ex.Listen(events)
 	}()
 
@@ -1019,7 +1031,7 @@ mappings:
   ttl: 2s
 `
 	// Create mapper from config and start an Exporter with a synchronous channel
-	testMapper := &mapper.MetricMapper{}
+	testMapper := newMetricMapper()
 	err := testMapper.InitFromYAMLString(config)
 	if err != nil {
 		t.Fatalf("Config load error: %s %s", config, err)
