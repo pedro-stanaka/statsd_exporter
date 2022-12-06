@@ -25,11 +25,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/hashicorp/go-multierror"
+
 	"github.com/prometheus/statsd_exporter/pkg/clock"
 	"github.com/prometheus/statsd_exporter/pkg/gatherer"
 	"github.com/prometheus/statsd_exporter/pkg/mapper"
 	"github.com/prometheus/statsd_exporter/pkg/metrics"
 )
+
+const reservedLabelPrefix = "__"
 
 // uncheckedCollector wraps a Collector but its Describe method yields no Desc.
 // This allows incoming metrics to have inconsistent label sets
@@ -162,7 +166,11 @@ func (r *Registry) Get(metricName string, hash metrics.LabelHash, metricType met
 }
 
 func (r *Registry) GetCounter(metricName string, labels prometheus.Labels, help string, mapping *mapper.MetricMapping, metricsCount *prometheus.GaugeVec) (prometheus.Counter, error) {
-	hash, labelNames := r.HashLabels(labels)
+	hash, labelNames, err := r.HashLabels(labels)
+	if err != nil {
+		return nil, fmt.Errorf(fmt.Sprintf("invalid label for metric: %s", metricName), err)
+	}
+
 	vh, mh := r.Get(metricName, hash, metrics.CounterMetricType)
 	if mh != nil {
 		return mh.(prometheus.Counter), nil
@@ -172,7 +180,7 @@ func (r *Registry) GetCounter(metricName string, labels prometheus.Labels, help 
 		return nil, fmt.Errorf("metric with name %s is already registered", metricName)
 	}
 
-	err := r.checkHistogramNameCollision(metricName)
+	err = r.checkHistogramNameCollision(metricName)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +222,10 @@ func (r *Registry) checkHistogramNameCollision(metricName string) error {
 }
 
 func (r *Registry) GetGauge(metricName string, labels prometheus.Labels, help string, mapping *mapper.MetricMapping, metricsCount *prometheus.GaugeVec) (prometheus.Gauge, error) {
-	hash, labelNames := r.HashLabels(labels)
+	hash, labelNames, err := r.HashLabels(labels)
+	if err != nil {
+		return nil, fmt.Errorf(fmt.Sprintf("invalid label for metric: %s", metricName), err)
+	}
 	vh, mh := r.Get(metricName, hash, metrics.GaugeMetricType)
 	if mh != nil {
 		return mh.(prometheus.Gauge), nil
@@ -224,7 +235,7 @@ func (r *Registry) GetGauge(metricName string, labels prometheus.Labels, help st
 		return nil, fmt.Errorf("metrics.Metric with name %s is already registered", metricName)
 	}
 
-	err := r.checkHistogramNameCollision(metricName)
+	err = r.checkHistogramNameCollision(metricName)
 	if err != nil {
 		return nil, fmt.Errorf("metrics.Metric with name %s is already registered", metricName)
 	}
@@ -254,7 +265,10 @@ func (r *Registry) GetGauge(metricName string, labels prometheus.Labels, help st
 }
 
 func (r *Registry) GetHistogram(metricName string, labels prometheus.Labels, help string, mapping *mapper.MetricMapping, metricsCount *prometheus.GaugeVec) (prometheus.Observer, error) {
-	hash, labelNames := r.HashLabels(labels)
+	hash, labelNames, err := r.HashLabels(labels)
+	if err != nil {
+		return nil, fmt.Errorf(fmt.Sprintf("invalid label for metric: %s", metricName), err)
+	}
 	vh, mh := r.Get(metricName, hash, metrics.HistogramMetricType)
 	if mh != nil {
 		return mh.(prometheus.Observer), nil
@@ -298,7 +312,7 @@ func (r *Registry) GetHistogram(metricName string, labels prometheus.Labels, hel
 			NativeHistogramMaxBucketNumber: maxBuckets,
 		}, labelNames)
 
-		if err := r.Registerer.Register(uncheckedCollector{histogramVec}); err != nil {
+		if err = r.Registerer.Register(uncheckedCollector{histogramVec}); err != nil {
 			return nil, err
 		}
 	} else {
@@ -306,7 +320,6 @@ func (r *Registry) GetHistogram(metricName string, labels prometheus.Labels, hel
 	}
 
 	var observer prometheus.Observer
-	var err error
 	if observer, err = histogramVec.GetMetricWith(labels); err != nil {
 		return nil, err
 	}
@@ -316,7 +329,10 @@ func (r *Registry) GetHistogram(metricName string, labels prometheus.Labels, hel
 }
 
 func (r *Registry) GetSummary(metricName string, labels prometheus.Labels, help string, mapping *mapper.MetricMapping, metricsCount *prometheus.GaugeVec) (prometheus.Observer, error) {
-	hash, labelNames := r.HashLabels(labels)
+	hash, labelNames, err := r.HashLabels(labels)
+	if err != nil {
+		return nil, fmt.Errorf(fmt.Sprintf("invalid label for metric: %s", metricName), err)
+	}
 	vh, mh := r.Get(metricName, hash, metrics.SummaryMetricType)
 	if mh != nil {
 		return mh.(prometheus.Observer), nil
@@ -367,7 +383,7 @@ func (r *Registry) GetSummary(metricName string, labels prometheus.Labels, help 
 			BufCap:     summaryOptions.BufCap,
 		}, labelNames)
 
-		if err := r.Registerer.Register(uncheckedCollector{summaryVec}); err != nil {
+		if err = r.Registerer.Register(uncheckedCollector{summaryVec}); err != nil {
 			return nil, err
 		}
 	} else {
@@ -375,7 +391,6 @@ func (r *Registry) GetSummary(metricName string, labels prometheus.Labels, help 
 	}
 
 	var observer prometheus.Observer
-	var err error
 	if observer, err = summaryVec.GetMetricWith(labels); err != nil {
 		return nil, err
 	}
@@ -418,13 +433,17 @@ func (r *Registry) RemoveMetric(metricName string) {
 }
 
 // Calculates a hash of both the label names and values.
-func (r *Registry) HashLabels(labels prometheus.Labels) (metrics.LabelHash, []string) {
+func (r *Registry) HashLabels(labels prometheus.Labels) (metrics.LabelHash, []string, error) {
 	r.Hasher.Reset()
 	r.NameBuf.Reset()
 	r.ValueBuf.Reset()
 	labelNames := make([]string, 0, len(labels))
 
+	var err error
 	for labelName := range labels {
+		if ok := checkLabelName(labelName); !ok {
+			err = multierror.Append(fmt.Errorf("%q is not a valid label name", labelName), err)
+		}
 		labelNames = append(labelNames, labelName)
 	}
 	sort.Strings(labelNames)
@@ -446,5 +465,9 @@ func (r *Registry) HashLabels(labels prometheus.Labels) (metrics.LabelHash, []st
 	r.Hasher.Write(r.ValueBuf.Bytes())
 	lh.Values = metrics.ValueHash(r.Hasher.Sum64())
 
-	return lh, labelNames
+	return lh, labelNames, err
+}
+
+func checkLabelName(l string) bool {
+	return model.LabelName(l).IsValid() && !strings.HasPrefix(l, reservedLabelPrefix)
 }

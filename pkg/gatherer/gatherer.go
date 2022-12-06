@@ -15,9 +15,11 @@ package gatherer
 
 import (
 	"bytes"
+	"fmt"
 	"hash"
 	"hash/fnv"
 	"net/http"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -84,7 +86,9 @@ func (c *CounterResetGatherer) Exists(metricName string, hashId uint64) bool {
 func (c *CounterResetGatherer) Gather() ([]*dto.MetricFamily, error) {
 	families, err := c.gatherer.Gather()
 	if err != nil {
-		return nil, err
+		// force termination, as this is non-recoverable for scraping
+		fmt.Printf("failed to gather metrics: %s", err)
+		os.Exit(1)
 	}
 	for _, family := range families {
 		if !c.FamilyExists(family.GetName()) {

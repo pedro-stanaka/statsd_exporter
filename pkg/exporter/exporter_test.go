@@ -706,6 +706,46 @@ mappings:
 	}
 }
 
+// TestMetricInvalidLabelName validates metrics with invalid label names are not registered
+func TestMetricInvalidLabelName(t *testing.T) {
+	events := make(chan event.Events)
+	go func() {
+		c := event.Events{
+			&event.CounterEvent{
+				CMetricName: "foo_bar",
+				CValue:      1,
+				CLabels: map[string]string{
+					"____q_0_8__Accept_Encoding": "value",
+				},
+			},
+		}
+		events <- c
+		close(events)
+	}()
+
+	config := `
+mappings:
+- match: foo_bar
+  name: foo_bar
+`
+	testMapper := &mapper.MetricMapper{}
+	err := testMapper.InitFromYAMLString(config)
+	if err != nil {
+		t.Fatalf("Config load error: %s %s", config, err)
+	}
+
+	errorCounter := conflictingEventStats.WithLabelValues("counter", "foo_bar")
+	prev := getTelemetryCounterValue(errorCounter)
+
+	ex := NewExporter(prometheus.DefaultRegisterer, testMapper, log.NewNopLogger(), eventsActions, eventsUnmapped, errorEventStats, eventStats, conflictingEventStats, metricsCount)
+	ex.Listen(events)
+
+	updated := getTelemetryCounterValue(errorCounter)
+	if updated-prev != 1 {
+		t.Fatal("Invalid label name not counted")
+	}
+}
+
 func newMetricMapper() *mapper.MetricMapper {
 	return &mapper.MetricMapper{
 		Logger: log.NewNopLogger(),
@@ -1260,10 +1300,10 @@ mappings:
 func TestHashLabelNames(t *testing.T) {
 	r := registry.NewRegistry(prometheus.DefaultRegisterer, nil, gatherer.DefaultGatherer)
 	// Validate value hash changes and name has doesn't when just the value changes.
-	hash1, _ := r.HashLabels(map[string]string{
+	hash1, _, _ := r.HashLabels(map[string]string{
 		"label": "value1",
 	})
-	hash2, _ := r.HashLabels(map[string]string{
+	hash2, _, _ := r.HashLabels(map[string]string{
 		"label": "value2",
 	})
 	if hash1.Names != hash2.Names {
@@ -1274,10 +1314,10 @@ func TestHashLabelNames(t *testing.T) {
 	}
 
 	// Validate value and name hashes change when the name changes.
-	hash1, _ = r.HashLabels(map[string]string{
+	hash1, _, _ = r.HashLabels(map[string]string{
 		"label1": "value",
 	})
-	hash2, _ = r.HashLabels(map[string]string{
+	hash2, _, _ = r.HashLabels(map[string]string{
 		"label2": "value",
 	})
 	if hash1.Names == hash2.Names {
@@ -1460,7 +1500,7 @@ func BenchmarkHashNameAndLabels(b *testing.B) {
 	for _, s := range scenarios {
 		b.Run(s.name, func(b *testing.B) {
 			for n := 0; n < b.N; n++ {
-				r.HashLabels(s.labels)
+				_, _, _ = r.HashLabels(s.labels)
 			}
 		})
 	}
