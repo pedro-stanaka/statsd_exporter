@@ -30,16 +30,19 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
 
+	"github.com/prometheus/statsd_exporter/pkg/clock"
 	"github.com/prometheus/statsd_exporter/pkg/metrics"
 )
 
 var (
-	lookbackDelta   time.Duration = 30 * time.Second
-	DefaultGatherer               = NewCounterResetGatherer(prometheus.DefaultGatherer, &lookbackDelta)
+	lookbackDelta   = 30 * time.Second
+	expireDuration  = 2 * time.Minute
+	DefaultGatherer = NewCounterResetGatherer(prometheus.DefaultGatherer, &lookbackDelta, &expireDuration)
 )
 
 func RegisterFlags(a *kingpin.Application) {
 	a.Flag("statsd.reset.lookback-delta", "The timestamp difference used for counter-resetting samples").DurationVar(&lookbackDelta)
+	a.Flag("statsd.reset.expire-duration", "Duration until counter reset samples are removed from scrape").DurationVar(&expireDuration)
 }
 
 func Handler() http.Handler {
@@ -57,16 +60,32 @@ type CounterResetGatherer struct {
 	ValueBuf, NameBuf bytes.Buffer
 	Hasher            hash.Hash64
 	lookbackDelta     *time.Duration
+	expireDuration    *time.Duration
 }
 
 func (c *CounterResetGatherer) AddHash(metricName string, hashId uint64) {
 	m, _ := c.m.LoadOrStore(metricName, &sync.Map{})
-	m.(*sync.Map).Store(hashId, true)
+	m.(*sync.Map).Store(hashId, &dto.Metric{})
 }
 
 func (c *CounterResetGatherer) deleteHash(metricName string, hashId uint64) {
-	m, _ := c.m.Load(metricName)
-	m.(*sync.Map).Delete(hashId)
+	m, ok := c.m.Load(metricName)
+	if !ok {
+		return
+	}
+	resetMetric, ok := m.(*sync.Map).Load(hashId)
+	if !ok || resetMetric.(*dto.Metric).TimestampMs == nil {
+		return
+	}
+	milli := clock.Now().Add(-*c.expireDuration).UnixMilli()
+	diff := clock.Now().UnixMilli() - *resetMetric.(*dto.Metric).TimestampMs
+	if diff > 0 {
+		//
+	}
+	if milli >= *resetMetric.(*dto.Metric).TimestampMs {
+		m.(*sync.Map).Delete(hashId)
+		return
+	}
 }
 
 func (c *CounterResetGatherer) FamilyExists(metricName string) bool {
@@ -74,7 +93,27 @@ func (c *CounterResetGatherer) FamilyExists(metricName string) bool {
 	return ok
 }
 
-func (c *CounterResetGatherer) Exists(metricName string, hashId uint64) bool {
+func (c *CounterResetGatherer) LoadResetMetric(metricName string, hashId uint64) (*dto.Metric, bool) {
+	m, ok := c.m.Load(metricName)
+	if !ok {
+		return nil, false
+	}
+	resetMetrics, ok := m.(*sync.Map).Load(hashId)
+	if !ok {
+		return nil, false
+	}
+	return resetMetrics.(*dto.Metric), true
+}
+
+func (c *CounterResetGatherer) updateResetMetrics(metricName string, hashId uint64, reset *dto.Metric) {
+	m, ok := c.m.Load(metricName)
+	if !ok {
+		return
+	}
+	m.(*sync.Map).Store(hashId, reset)
+}
+
+func (c *CounterResetGatherer) exists(metricName string, hashId uint64) bool {
 	m, ok := c.m.Load(metricName)
 	if !ok {
 		return false
@@ -101,11 +140,14 @@ func (c *CounterResetGatherer) Gather() ([]*dto.MetricFamily, error) {
 				labels[*lbl.Name] = *lbl.Value
 			}
 			hash, _ := c.HashLabels(labels)
-			if c.Exists(family.GetName(), uint64(hash.Values)) && family.GetType() == dto.MetricType_COUNTER {
-				resetMetrics = c.generateCounterReset(metric, resetMetrics, family, hash)
+			if !c.exists(family.GetName(), uint64(hash.Values)) {
+				continue
 			}
-			if c.Exists(family.GetName(), uint64(hash.Values)) && family.GetType() == dto.MetricType_HISTOGRAM {
-				resetMetrics = c.generateHistogramReset(metric, resetMetrics, family, hash)
+			if family.GetType() == dto.MetricType_COUNTER {
+				resetMetrics = append(resetMetrics, c.generateCounterReset(metric, family, hash))
+			}
+			if family.GetType() == dto.MetricType_HISTOGRAM {
+				resetMetrics = append(resetMetrics, c.generateHistogramReset(metric, family, hash))
 			}
 		}
 		if len(resetMetrics) > 0 {
@@ -116,11 +158,16 @@ func (c *CounterResetGatherer) Gather() ([]*dto.MetricFamily, error) {
 }
 
 func (c *CounterResetGatherer) generateHistogramReset(
-	metric *dto.Metric, resetMetrics []*dto.Metric, family *dto.MetricFamily, hash metrics.LabelHash,
-) []*dto.Metric {
+	metric *dto.Metric, family *dto.MetricFamily, hash metrics.LabelHash,
+) *dto.Metric {
+	defer c.deleteHash(family.GetName(), uint64(hash.Values))
+	reset, ok := c.LoadResetMetric(family.GetName(), uint64(hash.Values))
+	if ok && reset.TimestampMs != nil {
+		return reset
+	}
 	zeroInt := uint64(0.0)
 	zeroFloat := 0.0
-	milli := time.Now().Add(-*c.lookbackDelta).UnixMilli()
+	milli := clock.Now().Add(-*c.lookbackDelta).UnixMilli()
 	buckets := []*dto.Bucket{}
 	for _, bkt := range metric.Histogram.Bucket {
 		buckets = append(buckets, &dto.Bucket{
@@ -129,7 +176,7 @@ func (c *CounterResetGatherer) generateHistogramReset(
 			Exemplar:        bkt.Exemplar,
 		})
 	}
-	resetMetrics = append(resetMetrics, &dto.Metric{
+	resetMetric := &dto.Metric{
 		Label: metric.Label,
 		Histogram: &dto.Histogram{
 			SampleCount: &zeroInt,
@@ -137,17 +184,22 @@ func (c *CounterResetGatherer) generateHistogramReset(
 			Bucket:      buckets,
 		},
 		TimestampMs: &milli,
-	})
-	c.deleteHash(family.GetName(), uint64(hash.Values))
-	return resetMetrics
+	}
+	c.updateResetMetrics(family.GetName(), uint64(hash.Values), resetMetric)
+	return resetMetric
 }
 
 func (c *CounterResetGatherer) generateCounterReset(
-	metric *dto.Metric, resetMetrics []*dto.Metric, family *dto.MetricFamily, hash metrics.LabelHash,
-) []*dto.Metric {
+	metric *dto.Metric, family *dto.MetricFamily, hash metrics.LabelHash,
+) *dto.Metric {
+	defer c.deleteHash(family.GetName(), uint64(hash.Values))
+	reset, ok := c.LoadResetMetric(family.GetName(), uint64(hash.Values))
+	if ok && reset.TimestampMs != nil {
+		return reset
+	}
 	val := 0.0
-	milli := time.Now().Add(-*c.lookbackDelta).UnixMilli()
-	resetMetrics = append(resetMetrics, &dto.Metric{
+	milli := clock.Now().Add(-*c.lookbackDelta).UnixMilli()
+	resetMetric := &dto.Metric{
 		Label: metric.Label,
 		Counter: &dto.Counter{
 			Value:    &val,
@@ -155,17 +207,20 @@ func (c *CounterResetGatherer) generateCounterReset(
 		},
 		Summary:     metric.Summary,
 		TimestampMs: &milli,
-	})
-	c.deleteHash(family.GetName(), uint64(hash.Values))
-	return resetMetrics
+	}
+	c.updateResetMetrics(family.GetName(), uint64(hash.Values), resetMetric)
+	return resetMetric
 }
 
-func NewCounterResetGatherer(gatherer prometheus.Gatherer, lookbackDelta *time.Duration) *CounterResetGatherer {
+func NewCounterResetGatherer(
+	gatherer prometheus.Gatherer, lookbackDelta, expireDuration *time.Duration,
+) *CounterResetGatherer {
 	return &CounterResetGatherer{
-		gatherer:      gatherer,
-		m:             sync.Map{},
-		Hasher:        fnv.New64a(),
-		lookbackDelta: lookbackDelta,
+		gatherer:       gatherer,
+		m:              sync.Map{},
+		Hasher:         fnv.New64a(),
+		lookbackDelta:  lookbackDelta,
+		expireDuration: expireDuration,
 	}
 }
 
