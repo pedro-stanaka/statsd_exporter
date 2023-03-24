@@ -728,7 +728,7 @@ mappings:
 - match: foo_bar
   name: foo_bar
 `
-	testMapper := &mapper.MetricMapper{}
+	testMapper := newMetricMapper()
 	err := testMapper.InitFromYAMLString(config)
 	if err != nil {
 		t.Fatalf("Config load error: %s %s", config, err)

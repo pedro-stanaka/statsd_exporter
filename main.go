@@ -38,6 +38,7 @@ import (
 	"github.com/prometheus/statsd_exporter/pkg/event"
 	"github.com/prometheus/statsd_exporter/pkg/exporter"
 	"github.com/prometheus/statsd_exporter/pkg/gatherer"
+	"github.com/prometheus/statsd_exporter/pkg/httputil"
 	"github.com/prometheus/statsd_exporter/pkg/level"
 	"github.com/prometheus/statsd_exporter/pkg/line"
 	"github.com/prometheus/statsd_exporter/pkg/listener"
@@ -515,7 +516,8 @@ func main() {
 	}
 
 	mux := http.DefaultServeMux
-	mux.Handle(*metricsEndpoint, metricsHandler(packets))
+	mux.Handle(*metricsEndpoint, floatMetricsHandler(packets))
+	mux.Handle("/metrics-native-histogram", nativeHistogramsHandler(packets, logger))
 	if *metricsEndpoint != "/" && *metricsEndpoint != "" {
 		landingConfig := web.LandingConfig{
 			Name:        "StatsD Exporter",
@@ -591,10 +593,18 @@ func main() {
 	}
 }
 
-func metricsHandler(packets chan<- string) http.Handler {
-	originalHandler := gatherer.Handler()
+func nativeHistogramsHandler(packets chan<- string, logger log.Logger) http.Handler {
+	histogramsHandler := gatherer.NativeHistogramHandler()
+	return httputil.RequestHeadersLogging(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bufferLength.Set(float64(len(packets)))
+		histogramsHandler.ServeHTTP(w, r)
+	}))
+}
+
+func floatMetricsHandler(packets chan<- string) http.Handler {
+	floatsHandler := gatherer.HandlerFloatMetrics()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bufferLength.Set(float64(len(packets)))
-		originalHandler.ServeHTTP(w, r)
+		floatsHandler.ServeHTTP(w, r)
 	})
 }

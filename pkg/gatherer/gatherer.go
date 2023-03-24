@@ -34,10 +34,16 @@ import (
 	"github.com/prometheus/statsd_exporter/pkg/metrics"
 )
 
+const (
+	scrapeAcceptHeaderText         = `application/openmetrics-text;version=1.0.0,application/openmetrics-text;version=0.0.1;q=0.75,text/plain;version=0.0.4;q=0.5,*/*;q=0.1`
+	scrapeAcceptHeaderTextProtobuf = `application/vnd.google.protobuf;proto=io.prometheus.client.MetricFamily;encoding=delimited,application/openmetrics-text;version=1.0.0;q=0.8,application/openmetrics-text;version=0.0.1;q=0.75,text/plain;version=0.0.4;q=0.5,*/*;q=0.1`
+)
+
 var (
-	lookbackDelta   = 30 * time.Second
-	expireDuration  = 2 * time.Minute
-	DefaultGatherer = NewCounterResetGatherer(prometheus.DefaultGatherer, &lookbackDelta, &expireDuration)
+	lookbackDelta             = 30 * time.Second
+	expireDuration            = 2 * time.Minute
+	DefaultGatherer           = NewCounterResetGatherer(prometheus.DefaultGatherer, &lookbackDelta, &expireDuration)
+	HistogramGathererInstance = NewHistogramGatherer(DefaultGatherer)
 )
 
 func RegisterFlags(a *kingpin.Application) {
@@ -45,13 +51,30 @@ func RegisterFlags(a *kingpin.Application) {
 	a.Flag("statsd.reset.expire-duration", "Duration until counter reset samples are removed from scrape").DurationVar(&expireDuration)
 }
 
-func Handler() http.Handler {
-	return promhttp.InstrumentMetricHandler(
-		prometheus.DefaultRegisterer, promhttp.HandlerFor(
-			DefaultGatherer,
-			promhttp.HandlerOpts{},
-		),
-	)
+// NativeHistogramHandler serves only histogram metrics in protobuf format.
+func NativeHistogramHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set("Accept", scrapeAcceptHeaderTextProtobuf)
+		promhttp.InstrumentMetricHandler(
+			prometheus.DefaultRegisterer, promhttp.HandlerFor(
+				HistogramGathererInstance,
+				promhttp.HandlerOpts{},
+			),
+		).ServeHTTP(w, r)
+	})
+}
+
+// HandlerFloatMetrics serves float64 metrics in text format.
+func HandlerFloatMetrics() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set("Accept", scrapeAcceptHeaderText)
+		promhttp.InstrumentMetricHandler(
+			prometheus.DefaultRegisterer, promhttp.HandlerFor(
+				DefaultGatherer,
+				promhttp.HandlerOpts{},
+			),
+		).ServeHTTP(w, r)
+	})
 }
 
 type CounterResetGatherer struct {
@@ -165,26 +188,27 @@ func (c *CounterResetGatherer) generateHistogramReset(
 	if ok && reset.TimestampMs != nil {
 		return reset
 	}
-	zeroInt := uint64(0.0)
-	zeroFloat := 0.0
-	milli := clock.Now().Add(-*c.lookbackDelta).UnixMilli()
-	buckets := []*dto.Bucket{}
+
+	sampleTimeMillis := clock.Now().Add(-*c.lookbackDelta).UnixMilli()
+	buckets := make([]float64, 0, len(metric.Histogram.Bucket))
+	labels := make(map[string]string)
+	for _, lbl := range metric.Label {
+		labels[lbl.GetName()] = lbl.GetValue()
+	}
 	for _, bkt := range metric.Histogram.Bucket {
-		buckets = append(buckets, &dto.Bucket{
-			CumulativeCount: &zeroInt,
-			UpperBound:      bkt.UpperBound,
-			Exemplar:        bkt.Exemplar,
-		})
+		buckets = append(buckets, *bkt.UpperBound)
 	}
-	resetMetric := &dto.Metric{
-		Label: metric.Label,
-		Histogram: &dto.Histogram{
-			SampleCount: &zeroInt,
-			SampleSum:   &zeroFloat,
-			Bucket:      buckets,
-		},
-		TimestampMs: &milli,
-	}
+
+	histogram := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:                        family.GetName(),
+		ConstLabels:                 labels,
+		Buckets:                     buckets,
+		NativeHistogramBucketFactor: 1.1,
+	})
+	resetMetric := &dto.Metric{}
+	histogram.Write(resetMetric)
+	resetMetric.TimestampMs = &sampleTimeMillis
+
 	c.updateResetMetrics(family.GetName(), uint64(hash.Values), resetMetric)
 	return resetMetric
 }

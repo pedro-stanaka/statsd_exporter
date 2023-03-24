@@ -1,0 +1,6 @@
+defaults:
+  ttl: 50m # Metrics expire after 50 minutes
+  match_type: regex
+  observer_type: histogram
+  histogram_options:
+    buckets: [0.1, 0.25, 150, 500, 900]
