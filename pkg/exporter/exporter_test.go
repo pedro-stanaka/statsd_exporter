@@ -954,7 +954,9 @@ func TestCounterIncrement(t *testing.T) {
 
 func TestScaledMapping(t *testing.T) {
 	events := make(chan event.Events)
-	testMapper := mapper.MetricMapper{}
+	testMapper := mapper.MetricMapper{
+		Logger: log.NewNopLogger(),
+	}
 	config := `mappings:
 - match: foo.processed_kilobytes
   name: processed_bytes

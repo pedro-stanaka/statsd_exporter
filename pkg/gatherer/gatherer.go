@@ -70,7 +70,7 @@ func HandlerFloatMetrics() http.Handler {
 		r.Header.Set("Accept", scrapeAcceptHeaderText)
 		promhttp.InstrumentMetricHandler(
 			prometheus.DefaultRegisterer, promhttp.HandlerFor(
-				DefaultGatherer,
+				NewHistogramAllowListGatherer(DefaultGatherer, SLOHistogramAllowList),
 				promhttp.HandlerOpts{},
 			),
 		).ServeHTTP(w, r)
