@@ -78,12 +78,16 @@ func HandlerFloatMetrics() http.Handler {
 }
 
 type CounterResetGatherer struct {
-	gatherer          prometheus.Gatherer
-	m                 sync.Map
+	gatherer prometheus.Gatherer
+	m        sync.Map
+
+	// mu protects the following fields.
+	mu                *sync.Mutex
 	ValueBuf, NameBuf bytes.Buffer
 	Hasher            hash.Hash64
-	lookbackDelta     *time.Duration
-	expireDuration    *time.Duration
+
+	lookbackDelta  *time.Duration
+	expireDuration *time.Duration
 }
 
 func (c *CounterResetGatherer) AddHash(metricName string, hashId uint64) {
@@ -242,6 +246,7 @@ func NewCounterResetGatherer(
 	return &CounterResetGatherer{
 		gatherer:       gatherer,
 		m:              sync.Map{},
+		mu:             &sync.Mutex{},
 		Hasher:         fnv.New64a(),
 		lookbackDelta:  lookbackDelta,
 		expireDuration: expireDuration,
@@ -250,6 +255,9 @@ func NewCounterResetGatherer(
 
 // HashLabels Calculates a hash of both the label names and values.
 func (c *CounterResetGatherer) HashLabels(labels prometheus.Labels) (metrics.LabelHash, []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.Hasher.Reset()
 	c.NameBuf.Reset()
 	c.ValueBuf.Reset()
