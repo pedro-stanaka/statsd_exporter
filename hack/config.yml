@@ -4,3 +4,10 @@ defaults:
   observer_type: histogram
   histogram_options:
     buckets: [0.1, 0.25, 150, 500, 900]
+mappings:
+  - match: .*
+    match_type: regex
+    observer_type: histogram
+    name: $0
+    labels:
+      original_metric_name: $0
