@@ -105,10 +105,6 @@ func (c *CounterResetGatherer) deleteHash(metricName string, hashId uint64) {
 		return
 	}
 	milli := clock.Now().Add(-*c.expireDuration).UnixMilli()
-	diff := clock.Now().UnixMilli() - *resetMetric.(*dto.Metric).TimestampMs
-	if diff > 0 {
-		//
-	}
 	if milli >= *resetMetric.(*dto.Metric).TimestampMs {
 		m.(*sync.Map).Delete(hashId)
 		return

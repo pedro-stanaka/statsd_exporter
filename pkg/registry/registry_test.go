@@ -30,14 +30,6 @@ import (
 	"github.com/prometheus/statsd_exporter/pkg/mappercache/randomreplacement"
 )
 
-type mockClock struct {
-	current time.Time
-}
-
-func (m mockClock) Now() time.Time {
-	return m.current
-}
-
 func TestReset(t *testing.T) {
 	labels := map[string]string{
 		"labelName1": "labelKey1",

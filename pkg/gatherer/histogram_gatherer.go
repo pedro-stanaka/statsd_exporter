@@ -1,15 +1,13 @@
 package gatherer
 
 import (
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 )
 
 // HistogramGatherer is a prometheus.Gatherer that only returns histogram metrics.
 type HistogramGatherer struct {
-	g      prometheus.Gatherer
-	logger log.Logger
+	g prometheus.Gatherer
 }
 
 // NewHistogramGatherer creates a new HistogramGatherer.

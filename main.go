@@ -317,13 +317,13 @@ func main() {
 	level.Info(logger).Log("msg", "Starting StatsD -> Prometheus Exporter", "version", version.Info())
 	level.Info(logger).Log("msg", "Build context", "context", version.BuildContext())
 
+	if packetBufferSize == nil {
+		val := uint(3000)
+		packetBufferSize = &val
+	}
 	packets := make(chan string, *packetBufferSize)
 	defer close(packets)
-	if packetBufferSize != nil {
-		bufferMaxLength.Set(float64(*packetBufferSize))
-	} else {
-		bufferMaxLength.Set(float64(0))
-	}
+	bufferMaxLength.Set(float64(*packetBufferSize))
 
 	events := make(chan event.Events, *eventQueueSize)
 	defer close(events)

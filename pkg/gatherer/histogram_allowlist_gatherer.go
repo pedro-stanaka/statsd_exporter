@@ -3,7 +3,6 @@ package gatherer
 import (
 	"strings"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 )
@@ -14,8 +13,7 @@ var SLOHistogramAllowList = []string{
 
 // HistogramAllowlistGatherer is a prometheus.Gatherer that only returns allowed histogram metrics.
 type HistogramAllowlistGatherer struct {
-	g      prometheus.Gatherer
-	logger log.Logger
+	g prometheus.Gatherer
 
 	allowSet map[string]struct{}
 }
@@ -24,15 +22,9 @@ type HistogramAllowlistGatherer struct {
 func NewHistogramAllowListGatherer(g prometheus.Gatherer, allowList []string) *HistogramAllowlistGatherer {
 	allowSet := make(map[string]struct{}, len(allowList))
 	for _, name := range allowList {
-		if strings.HasSuffix(name, "_bucket") {
-			name = strings.TrimSuffix(name, "_bucket")
-		}
-		if strings.HasSuffix(name, "_sum") {
-			name = strings.TrimSuffix(name, "_sum")
-		}
-		if strings.HasSuffix(name, "_count") {
-			name = strings.TrimSuffix(name, "_count")
-		}
+		name = strings.TrimSuffix(name, "_bucket")
+		name = strings.TrimSuffix(name, "_sum")
+		name = strings.TrimSuffix(name, "_count")
 		allowSet[name] = struct{}{}
 	}
 

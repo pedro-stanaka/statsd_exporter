@@ -4,9 +4,9 @@ type: go
 
 up:
   - go:
-      version: 1.19
+      version: 1.23.1
       modules: true
-  - homebrew:
+  - packages:
       - golangci-lint
 
 # `dev run` runs `dev build` and then `dev run-built` if these are both defined.
