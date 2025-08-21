@@ -1,6 +1,9 @@
 version: 2
+enable-beta-ecosystems: true
 updates:
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 90
