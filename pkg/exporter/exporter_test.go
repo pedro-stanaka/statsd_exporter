@@ -844,12 +844,13 @@ func TestInvalidUtf8InDatadogTagValue(t *testing.T) {
 			PacketBuffer: packets,
 			UDPPackets:   udpPackets,
 		}, &mockStatsDTCPListener{listener.StatsDTCPListener{
-			Conn:           nil,
-			Logger:         log.NewNopLogger(),
-			TCPConnections: tcpConnections,
-			TCPErrors:      tcpErrors,
-			PacketBuffer:   packets,
-			TCPLineTooLong: tcpLineTooLong,
+			Conn:             nil,
+			Logger:           log.NewNopLogger(),
+			TCPConnections:   tcpConnections,
+			TCPErrors:        tcpErrors,
+			PacketBuffer:     packets,
+			TCPLineTooLong:   tcpLineTooLong,
+			TruncatedPackets: prometheus.NewCounter(prometheus.CounterOpts{}),
 		}, log.NewNopLogger()}} {
 			l.SetPacketBuffer(packets)
 			l.HandlePacket([]byte("bar:200|c|#tag:value\nbar:200|c|#tag:\xc3\x28invalid"))
@@ -859,8 +860,12 @@ func TestInvalidUtf8InDatadogTagValue(t *testing.T) {
 	testMapper := newMetricMapper()
 
 	require.Eventually(t, func() bool {
-		fmt.Println(len(events))
-		return len(events) == 4 && len(packets) == 0
+		// With the new TCP implementation using ReadString('\n'), each TCP line
+		// sent ends with '\n', which creates an empty string when split.
+		// UDP: 1 packet → 2 lines → 2 Events
+		// TCP: 2 packets → 2 lines + 2 empty → 4 Events
+		// Total: 6 Events (2 UDP + 4 TCP)
+		return len(events) == 6 && len(packets) == 0
 	}, time.Second, time.Millisecond*10)
 
 	close(packets)
@@ -1091,8 +1096,18 @@ func (ml *mockStatsDTCPListener) HandlePacket(packet []byte) {
 
 		defer cc.Close()
 
-		n, err := cc.Write(packet)
-		if err != nil || n != len(packet) {
+		// Ensure packet ends with newline (required by new TCP implementation)
+		// TCP packets must end with \n to be processed correctly
+		packetToSend := packet
+		if len(packet) > 0 && packet[len(packet)-1] != '\n' {
+			// Make a copy to avoid modifying original slice
+			packetToSend = make([]byte, len(packet)+1)
+			copy(packetToSend, packet)
+			packetToSend[len(packet)] = '\n'
+		}
+
+		n, err := cc.Write(packetToSend)
+		if err != nil || n != len(packetToSend) {
 			panic(fmt.Sprintf("mockStatsDTCPListener: write failed: %v,%d", err, n))
 		}
 	}()

@@ -69,9 +69,10 @@ type StatsDTCPListener struct {
 	PacketBuffer chan string
 	Logger       log.Logger
 
-	TCPConnections prometheus.Counter
-	TCPErrors      prometheus.Counter
-	TCPLineTooLong prometheus.Counter
+	TCPConnections   prometheus.Counter
+	TCPErrors        prometheus.Counter
+	TCPLineTooLong   prometheus.Counter
+	TruncatedPackets prometheus.Counter
 }
 
 func (l *StatsDTCPListener) SetPacketBuffer(pb chan string) {
@@ -101,22 +102,47 @@ func (l *StatsDTCPListener) HandleConn(c *net.TCPConn) {
 
 	r := bufio.NewReader(c)
 	for {
-		line, isPrefix, err := r.ReadLine()
+		line, err := r.ReadString('\n')
 		if err != nil {
-			if err != io.EOF {
+			// Check if we have partial data (truncated packet)
+			if err == io.EOF && len(line) > 0 {
+				// Connection closed with partial data (no trailing newline)
+				l.TruncatedPackets.Inc()
+				level.Debug(l.Logger).Log(
+					"msg", "Discarding truncated packet without trailing newline",
+					"addr", c.RemoteAddr(),
+					"partial", line,
+				)
+			} else if err != io.EOF {
 				l.TCPErrors.Inc()
-				level.Debug(l.Logger).Log("msg", "Read failed", "addr", c.RemoteAddr(), "error", err)
+				level.Debug(l.Logger).Log(
+					"msg", "Read failed",
+					"addr", c.RemoteAddr(),
+					"error", err,
+				)
 			}
 			break
 		}
-		level.Debug(l.Logger).Log("msg", "Incoming line", "proto", "tcp", "line", string(line))
-		if isPrefix {
+
+		// Check for line too long (buffer size exceeded)
+		if len(line) >= bufio.MaxScanTokenSize {
 			l.TCPLineTooLong.Inc()
-			level.Debug(l.Logger).Log("msg", "Read failed: line too long", "addr", c.RemoteAddr())
+			level.Debug(l.Logger).Log(
+				"msg", "Line too long",
+				"addr", c.RemoteAddr(),
+				"length", len(line),
+			)
 			break
 		}
 
-		l.PacketBuffer <- string(line)
+		level.Debug(l.Logger).Log(
+			"msg", "Incoming line",
+			"proto", "tcp",
+			"line", line,
+		)
+
+		// Send line WITH trailing newline (worker will split it)
+		l.PacketBuffer <- line
 	}
 }
 

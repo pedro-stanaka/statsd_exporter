@@ -538,11 +538,12 @@ func TestHandlePacket(t *testing.T) {
 		Logger:     log.NewNopLogger(),
 		UDPPackets: udpPackets,
 	}, &mockStatsDTCPListener{listener.StatsDTCPListener{
-		Conn:           nil,
-		Logger:         log.NewNopLogger(),
-		TCPConnections: tcpConnections,
-		TCPErrors:      tcpErrors,
-		TCPLineTooLong: tcpLineTooLong,
+		Conn:             nil,
+		Logger:           log.NewNopLogger(),
+		TCPConnections:   tcpConnections,
+		TCPErrors:        tcpErrors,
+		TCPLineTooLong:   tcpLineTooLong,
+		TruncatedPackets: prometheus.NewCounter(prometheus.CounterOpts{}),
 	}, log.NewNopLogger()}} {
 		packets := make(chan string, 32)
 		events := make(chan event.Events, 32)
@@ -623,8 +624,17 @@ func (ml *mockStatsDTCPListener) HandlePacket(packet []byte) {
 
 		defer cc.Close()
 
-		n, err := cc.Write(packet)
-		if err != nil || n != len(packet) {
+		// Ensure packet ends with newline (required by new TCP implementation)
+		// Make a copy to avoid modifying the original slice
+		packetToSend := packet
+		if len(packet) > 0 && packet[len(packet)-1] != '\n' {
+			packetToSend = make([]byte, len(packet)+1)
+			copy(packetToSend, packet)
+			packetToSend[len(packet)] = '\n'
+		}
+
+		n, err := cc.Write(packetToSend)
+		if err != nil || n != len(packetToSend) {
 			panic(fmt.Sprintf("mockStatsDTCPListener: write failed: %v,%d", err, n))
 		}
 	}()

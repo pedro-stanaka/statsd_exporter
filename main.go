@@ -92,6 +92,12 @@ var (
 			Help: "The number of lines discarded due to being too long.",
 		},
 	)
+	tcpTruncatedPackets = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "statsd_exporter_tcp_truncated_packets_total",
+			Help: "The number of TCP packets discarded due to missing trailing newline (likely truncated).",
+		},
+	)
 	unixgramPackets = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "statsd_exporter_unixgram_packets_total",
@@ -460,9 +466,10 @@ func main() {
 			Logger:       logger,
 			PacketBuffer: packets,
 
-			TCPConnections: tcpConnections,
-			TCPErrors:      tcpErrors,
-			TCPLineTooLong: tcpLineTooLong,
+			TCPConnections:   tcpConnections,
+			TCPErrors:        tcpErrors,
+			TCPLineTooLong:   tcpLineTooLong,
+			TruncatedPackets: tcpTruncatedPackets,
 		}
 
 		go tl.Listen()
