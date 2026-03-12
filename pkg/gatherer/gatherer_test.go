@@ -31,7 +31,7 @@ func TestGatherErrorResilience(t *testing.T) {
 				metric("valid_counter", dto.MetricType_COUNTER),
 				metric("valid_gauge", dto.MetricType_GAUGE),
 			},
-			gatherErr:     fmt.Errorf("collected metric foo_count was collected before with the same name and label values"),
+			gatherErr:     fmt.Errorf("duplicate metrics collected with different types"),
 			expectedCount: 2,
 			expectCounter: true,
 		},
