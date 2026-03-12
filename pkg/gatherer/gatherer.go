@@ -15,16 +15,15 @@ package gatherer
 
 import (
 	"bytes"
-	"fmt"
 	"hash"
 	"hash/fnv"
 	"net/http"
-	"os"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -32,6 +31,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/statsd_exporter/pkg/clock"
+	"github.com/prometheus/statsd_exporter/pkg/level"
 	"github.com/prometheus/statsd_exporter/pkg/metrics"
 )
 
@@ -85,6 +85,7 @@ func HandlerFloatMetrics() http.Handler {
 
 type CounterResetGatherer struct {
 	gatherer prometheus.Gatherer
+	logger   log.Logger
 	m        sync.Map
 
 	// mu protects the following fields.
@@ -94,6 +95,12 @@ type CounterResetGatherer struct {
 
 	lookbackDelta  *time.Duration
 	expireDuration *time.Duration
+}
+
+// SetLogger sets the logger on the gatherer. This is useful for the package-level
+// DefaultGatherer which is initialized before the logger is available.
+func (c *CounterResetGatherer) SetLogger(logger log.Logger) {
+	c.logger = logger
 }
 
 func (c *CounterResetGatherer) AddHash(metricName string, hashId uint64) {
@@ -155,7 +162,7 @@ func (c *CounterResetGatherer) Gather() ([]*dto.MetricFamily, error) {
 	families, err := c.gatherer.Gather()
 	if err != nil {
 		gatherErrors.Inc()
-		fmt.Fprintf(os.Stderr, "error gathering metrics, returning partial results: %s\n", err)
+		level.Error(c.logger).Log("msg", "error gathering metrics, returning partial results", "err", err)
 	}
 	for _, family := range families {
 		if !c.FamilyExists(family.GetName()) {
@@ -246,6 +253,7 @@ func NewCounterResetGatherer(
 ) *CounterResetGatherer {
 	return &CounterResetGatherer{
 		gatherer:       gatherer,
+		logger:         log.NewNopLogger(),
 		m:              sync.Map{},
 		mu:             &sync.Mutex{},
 		Hasher:         fnv.New64a(),

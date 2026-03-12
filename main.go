@@ -299,6 +299,7 @@ func main() {
 		os.Exit(1)
 	}
 	prometheus.MustRegister(versioncollector.NewCollector("statsd_exporter"))
+	gatherer.DefaultGatherer.SetLogger(logger)
 
 	lineParser := line.NewParser()
 	if *dogstatsdTagsEnabled {
