@@ -26,6 +26,7 @@ import (
 
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
@@ -44,6 +45,11 @@ var (
 	expireDuration            = 2 * time.Minute
 	DefaultGatherer           = NewCounterResetGatherer(prometheus.DefaultGatherer, &lookbackDelta, &expireDuration)
 	HistogramGathererInstance = NewHistogramGatherer(DefaultGatherer)
+
+	gatherErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "statsd_exporter_gather_errors_total",
+		Help: "The total number of errors encountered during metric gathering.",
+	})
 )
 
 func RegisterFlags(a *kingpin.Application) {
@@ -148,9 +154,8 @@ func (c *CounterResetGatherer) exists(metricName string, hashId uint64) bool {
 func (c *CounterResetGatherer) Gather() ([]*dto.MetricFamily, error) {
 	families, err := c.gatherer.Gather()
 	if err != nil {
-		// force termination, as this is non-recoverable for scraping
-		fmt.Printf("failed to gather metrics: %s", err)
-		os.Exit(1)
+		gatherErrors.Inc()
+		fmt.Fprintf(os.Stderr, "error gathering metrics, returning partial results: %s\n", err)
 	}
 	for _, family := range families {
 		if !c.FamilyExists(family.GetName()) {
