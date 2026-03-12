@@ -10,72 +10,100 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type errorGatherer struct {
-	families []*dto.MetricFamily
-	err      error
-}
+var badDesc = prometheus.NewDesc("bad_metric", "triggers a gather error", nil, nil)
 
-func (e errorGatherer) Gather() ([]*dto.MetricFamily, error) {
-	return e.families, e.err
-}
+type badCollector struct{}
+
+func (b badCollector) Describe(ch chan<- *prometheus.Desc) { ch <- badDesc }
+func (b badCollector) Collect(ch chan<- prometheus.Metric) { ch <- badMetric{} }
+
+type badMetric struct{}
+
+func (b badMetric) Desc() *prometheus.Desc  { return badDesc }
+func (b badMetric) Write(*dto.Metric) error { return fmt.Errorf("intentional write error") }
 
 func TestGatherErrorResilience(t *testing.T) {
-	tests := map[string]struct {
-		families      []*dto.MetricFamily
-		gatherErr     error
-		expectedCount int
-		expectCounter bool
-	}{
-		"returns partial results on gather error": {
-			families: []*dto.MetricFamily{
-				metric("valid_counter", dto.MetricType_COUNTER),
-				metric("valid_gauge", dto.MetricType_GAUGE),
-			},
-			gatherErr:     fmt.Errorf("duplicate metrics collected with different types"),
-			expectedCount: 2,
-			expectCounter: true,
-		},
-		"succeeds with no error": {
-			families: []*dto.MetricFamily{
-				metric("my_counter", dto.MetricType_COUNTER),
-			},
-			gatherErr:     nil,
-			expectedCount: 1,
-			expectCounter: false,
-		},
-		"returns empty results on error with nil families": {
-			families:      nil,
-			gatherErr:     fmt.Errorf("total failure"),
-			expectedCount: 0,
-			expectCounter: true,
-		},
+	t.Run("returns all metrics when gather succeeds", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		counter := prometheus.NewCounter(prometheus.CounterOpts{Name: "test_counter", Help: "help"})
+		gauge := prometheus.NewGauge(prometheus.GaugeOpts{Name: "test_gauge", Help: "help"})
+		reg.MustRegister(counter, gauge)
+		counter.Add(42)
+		gauge.Set(3.14)
+
+		before := getCounterValue(t, gatherErrors)
+		g := newTestGatherer(t, reg)
+		result, err := g.Gather()
+
+		require.NoError(t, err)
+		require.Equal(t, before, getCounterValue(t, gatherErrors), "error counter should not increment")
+		requireCounterValue(t, result, "test_counter", 42)
+		requireGaugeValue(t, result, "test_gauge", 3.14)
+	})
+
+	t.Run("drops offending metric and returns the rest on error", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		counter := prometheus.NewCounter(prometheus.CounterOpts{Name: "valid_counter", Help: "help"})
+		gauge := prometheus.NewGauge(prometheus.GaugeOpts{Name: "valid_gauge", Help: "help"})
+		reg.MustRegister(counter, gauge, badCollector{})
+		counter.Add(42)
+		gauge.Set(3.14)
+
+		before := getCounterValue(t, gatherErrors)
+		g := newTestGatherer(t, reg)
+		result, err := g.Gather()
+
+		require.NoError(t, err, "gather error should be swallowed")
+		require.Equal(t, before+1, getCounterValue(t, gatherErrors), "error counter should increment")
+		requireCounterValue(t, result, "valid_counter", 42)
+		requireGaugeValue(t, result, "valid_gauge", 3.14)
+		require.Nil(t, findFamily(result, "bad_metric"), "offending metric should be absent")
+	})
+
+	t.Run("returns empty result when only bad collectors are registered", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		reg.MustRegister(badCollector{})
+
+		before := getCounterValue(t, gatherErrors)
+		g := newTestGatherer(t, reg)
+		result, err := g.Gather()
+
+		require.NoError(t, err)
+		require.Equal(t, before+1, getCounterValue(t, gatherErrors))
+		require.Empty(t, result)
+	})
+}
+
+func newTestGatherer(t *testing.T, gatherer prometheus.Gatherer) *CounterResetGatherer {
+	t.Helper()
+	lookback := 30 * time.Second
+	expire := 2 * time.Minute
+	return NewCounterResetGatherer(gatherer, &lookback, &expire)
+}
+
+func findFamily(families []*dto.MetricFamily, name string) *dto.MetricFamily {
+	for _, f := range families {
+		if f.GetName() == name {
+			return f
+		}
 	}
+	return nil
+}
 
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			lookback := 30 * time.Second
-			expire := 2 * time.Minute
+func requireCounterValue(t *testing.T, families []*dto.MetricFamily, name string, expected float64) {
+	t.Helper()
+	f := findFamily(families, name)
+	require.NotNilf(t, f, "metric family %q not found", name)
+	require.NotEmpty(t, f.Metric)
+	require.Equal(t, expected, f.Metric[0].Counter.GetValue())
+}
 
-			before := getCounterValue(t, gatherErrors)
-
-			g := NewCounterResetGatherer(
-				errorGatherer{families: tc.families, err: tc.gatherErr},
-				&lookback,
-				&expire,
-			)
-
-			result, err := g.Gather()
-			require.NoError(t, err)
-			require.Len(t, result, tc.expectedCount)
-
-			after := getCounterValue(t, gatherErrors)
-			if tc.expectCounter {
-				require.Equal(t, before+1, after)
-			} else {
-				require.Equal(t, before, after)
-			}
-		})
-	}
+func requireGaugeValue(t *testing.T, families []*dto.MetricFamily, name string, expected float64) {
+	t.Helper()
+	f := findFamily(families, name)
+	require.NotNilf(t, f, "metric family %q not found", name)
+	require.NotEmpty(t, f.Metric)
+	require.Equal(t, expected, f.Metric[0].Gauge.GetValue())
 }
 
 func getCounterValue(t *testing.T, c prometheus.Counter) float64 {
