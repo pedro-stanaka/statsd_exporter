@@ -31,12 +31,12 @@ func TestGatherErrorResilience(t *testing.T) {
 		counter.Add(42)
 		gauge.Set(3.14)
 
-		before := getCounterValue(t, gatherErrors)
 		g := newTestGatherer(t, reg)
+		before := getCounterValue(t, g.gatherErrors)
 		result, err := g.Gather()
 
 		require.NoError(t, err)
-		require.Equal(t, before, getCounterValue(t, gatherErrors), "error counter should not increment")
+		require.Equal(t, before, getCounterValue(t, g.gatherErrors), "error counter should not increment")
 		requireCounterValue(t, result, "test_counter", 42)
 		requireGaugeValue(t, result, "test_gauge", 3.14)
 	})
@@ -49,12 +49,12 @@ func TestGatherErrorResilience(t *testing.T) {
 		counter.Add(42)
 		gauge.Set(3.14)
 
-		before := getCounterValue(t, gatherErrors)
 		g := newTestGatherer(t, reg)
+		before := getCounterValue(t, g.gatherErrors)
 		result, err := g.Gather()
 
 		require.NoError(t, err, "gather error should be swallowed")
-		require.Equal(t, before+1, getCounterValue(t, gatherErrors), "error counter should increment")
+		require.Equal(t, before+1, getCounterValue(t, g.gatherErrors), "error counter should increment")
 		requireCounterValue(t, result, "valid_counter", 42)
 		requireGaugeValue(t, result, "valid_gauge", 3.14)
 		require.Nil(t, findFamily(result, "bad_metric"), "offending metric should be absent")
@@ -64,12 +64,12 @@ func TestGatherErrorResilience(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		reg.MustRegister(badCollector{})
 
-		before := getCounterValue(t, gatherErrors)
 		g := newTestGatherer(t, reg)
+		before := getCounterValue(t, g.gatherErrors)
 		result, err := g.Gather()
 
 		require.NoError(t, err)
-		require.Equal(t, before+1, getCounterValue(t, gatherErrors))
+		require.Equal(t, before+1, getCounterValue(t, g.gatherErrors))
 		require.Empty(t, result)
 	})
 }
@@ -78,7 +78,12 @@ func newTestGatherer(t *testing.T, gatherer prometheus.Gatherer) *CounterResetGa
 	t.Helper()
 	lookback := 30 * time.Second
 	expire := 2 * time.Minute
-	return NewCounterResetGatherer(gatherer, &lookback, &expire)
+	g := NewCounterResetGatherer(gatherer, &lookback, &expire)
+	g.SetGatherErrors(prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "statsd_exporter_gather_errors_total",
+		Help: "The total number of errors encountered during metric gathering.",
+	}))
+	return g
 }
 
 func findFamily(families []*dto.MetricFamily, name string) *dto.MetricFamily {

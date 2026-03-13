@@ -25,7 +25,6 @@ import (
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
@@ -45,11 +44,6 @@ var (
 	expireDuration            = 2 * time.Minute
 	DefaultGatherer           = NewCounterResetGatherer(prometheus.DefaultGatherer, &lookbackDelta, &expireDuration)
 	HistogramGathererInstance = NewHistogramGatherer(DefaultGatherer)
-
-	gatherErrors = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "statsd_exporter_gather_errors_total",
-		Help: "The total number of errors encountered during metric gathering.",
-	})
 )
 
 func RegisterFlags(a *kingpin.Application) {
@@ -84,9 +78,10 @@ func HandlerFloatMetrics() http.Handler {
 }
 
 type CounterResetGatherer struct {
-	gatherer prometheus.Gatherer
-	logger   log.Logger
-	m        sync.Map
+	gatherer     prometheus.Gatherer
+	logger       log.Logger
+	gatherErrors prometheus.Counter
+	m            sync.Map
 
 	// mu protects the following fields.
 	mu                *sync.Mutex
@@ -101,6 +96,12 @@ type CounterResetGatherer struct {
 // DefaultGatherer which is initialized before the logger is available.
 func (c *CounterResetGatherer) SetLogger(logger log.Logger) {
 	c.logger = logger
+}
+
+// SetGatherErrors sets the counter for gather errors. This is useful for the package-level
+// DefaultGatherer which is initialized before the counter is available.
+func (c *CounterResetGatherer) SetGatherErrors(counter prometheus.Counter) {
+	c.gatherErrors = counter
 }
 
 func (c *CounterResetGatherer) AddHash(metricName string, hashId uint64) {
@@ -161,7 +162,9 @@ func (c *CounterResetGatherer) exists(metricName string, hashId uint64) bool {
 func (c *CounterResetGatherer) Gather() ([]*dto.MetricFamily, error) {
 	families, err := c.gatherer.Gather()
 	if err != nil {
-		gatherErrors.Inc()
+		if c.gatherErrors != nil {
+			c.gatherErrors.Inc()
+		}
 		level.Error(c.logger).Log("msg", "error gathering metrics, returning partial results", "err", err)
 	}
 	for _, family := range families {
