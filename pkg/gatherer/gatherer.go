@@ -15,22 +15,22 @@ package gatherer
 
 import (
 	"bytes"
-	"fmt"
 	"hash"
 	"hash/fnv"
 	"net/http"
-	"os"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
 
 	"github.com/prometheus/statsd_exporter/pkg/clock"
+	"github.com/prometheus/statsd_exporter/pkg/level"
 	"github.com/prometheus/statsd_exporter/pkg/metrics"
 )
 
@@ -78,8 +78,10 @@ func HandlerFloatMetrics() http.Handler {
 }
 
 type CounterResetGatherer struct {
-	gatherer prometheus.Gatherer
-	m        sync.Map
+	gatherer     prometheus.Gatherer
+	logger       log.Logger
+	gatherErrors prometheus.Counter
+	m            sync.Map
 
 	// mu protects the following fields.
 	mu                *sync.Mutex
@@ -88,6 +90,18 @@ type CounterResetGatherer struct {
 
 	lookbackDelta  *time.Duration
 	expireDuration *time.Duration
+}
+
+// SetLogger sets the logger on the gatherer. This is useful for the package-level
+// DefaultGatherer which is initialized before the logger is available.
+func (c *CounterResetGatherer) SetLogger(logger log.Logger) {
+	c.logger = logger
+}
+
+// SetGatherErrors sets the counter for gather errors. This is useful for the package-level
+// DefaultGatherer which is initialized before the counter is available.
+func (c *CounterResetGatherer) SetGatherErrors(counter prometheus.Counter) {
+	c.gatherErrors = counter
 }
 
 func (c *CounterResetGatherer) AddHash(metricName string, hashId uint64) {
@@ -148,9 +162,10 @@ func (c *CounterResetGatherer) exists(metricName string, hashId uint64) bool {
 func (c *CounterResetGatherer) Gather() ([]*dto.MetricFamily, error) {
 	families, err := c.gatherer.Gather()
 	if err != nil {
-		// force termination, as this is non-recoverable for scraping
-		fmt.Printf("failed to gather metrics: %s", err)
-		os.Exit(1)
+		if c.gatherErrors != nil {
+			c.gatherErrors.Inc()
+		}
+		level.Error(c.logger).Log("msg", "error gathering metrics, returning partial results", "err", err)
 	}
 	for _, family := range families {
 		if !c.FamilyExists(family.GetName()) {
@@ -241,6 +256,7 @@ func NewCounterResetGatherer(
 ) *CounterResetGatherer {
 	return &CounterResetGatherer{
 		gatherer:       gatherer,
+		logger:         log.NewNopLogger(),
 		m:              sync.Map{},
 		mu:             &sync.Mutex{},
 		Hasher:         fnv.New64a(),

@@ -186,6 +186,10 @@ var (
 			Help: "FNV hash of the config file",
 		},
 	)
+	gatherErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "statsd_exporter_gather_errors_total",
+		Help: "The total number of errors encountered during metric gathering.",
+	})
 )
 
 func serveHTTP(mux http.Handler, listenAddress string, logger log.Logger) {
@@ -299,6 +303,8 @@ func main() {
 		os.Exit(1)
 	}
 	prometheus.MustRegister(versioncollector.NewCollector("statsd_exporter"))
+	gatherer.DefaultGatherer.SetLogger(logger)
+	gatherer.DefaultGatherer.SetGatherErrors(gatherErrors)
 
 	lineParser := line.NewParser()
 	if *dogstatsdTagsEnabled {
