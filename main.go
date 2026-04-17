@@ -312,12 +312,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *memlimitRatio <= 0.0 || *memlimitRatio > 1.0 {
-		fmt.Fprintf(os.Stderr, "--auto-gomemlimit.ratio must be greater than 0 and less than or equal to 1.")
-		os.Exit(1)
-	}
-
 	if *memlimitEnable {
+		if *memlimitRatio <= 0.0 || *memlimitRatio > 1.0 {
+			fmt.Fprintf(os.Stderr, "--auto-gomemlimit.ratio must be greater than 0 and less than or equal to 1.")
+			os.Exit(1)
+		}
 		if _, err := memlimit.SetGoMemLimitWithOpts(
 			memlimit.WithRatio(*memlimitRatio),
 			memlimit.WithProvider(
