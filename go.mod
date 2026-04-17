@@ -15,7 +15,10 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 )
 
-require github.com/hashicorp/go-multierror v1.1.1
+require (
+	github.com/KimMachineGun/automemlimit v0.7.5
+	github.com/hashicorp/go-multierror v1.1.1
+)
 
 require (
 	github.com/alecthomas/units v0.0.0-20240626203959-61d1e3462e30 // indirect
@@ -31,6 +34,7 @@ require (
 	github.com/mdlayher/vsock v1.2.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
+	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
