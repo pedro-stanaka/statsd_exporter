@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"syscall"
 
+	"github.com/KimMachineGun/automemlimit/memlimit"
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -294,6 +295,8 @@ func main() {
 		signalFXTagsEnabled  = kingpin.Flag("statsd.parse-signalfx-tags", "Parse SignalFX style tags. Enabled by default.").Default("true").Bool()
 		relayAddr            = kingpin.Flag("statsd.relay.address", "The UDP relay target address (host:port)").String()
 		relayPacketLen       = kingpin.Flag("statsd.relay.packet-length", "Maximum relay output packet length to avoid fragmentation").Default("1400").Uint()
+		memlimitEnable       = kingpin.Flag("auto-gomemlimit", "Automatically set GOMEMLIMIT to match Linux container or system memory limit").Default("true").Bool()
+		memlimitRatio        = kingpin.Flag("auto-gomemlimit.ratio", "The ratio of reserved GOMEMLIMIT memory to the detected maximum container or system memory").Default("0.9").Float64()
 	)
 	gatherer.RegisterFlags(kingpin.CommandLine)
 
@@ -307,6 +310,25 @@ func main() {
 	if err := level.SetLogLevel(promlogConfig.Level.String()); err != nil {
 		level.Error(logger).Log("msg", "failed to set log level", "error", err)
 		os.Exit(1)
+	}
+
+	if *memlimitRatio <= 0.0 || *memlimitRatio > 1.0 {
+		fmt.Fprintf(os.Stderr, "--auto-gomemlimit.ratio must be greater than 0 and less than or equal to 1.")
+		os.Exit(1)
+	}
+
+	if *memlimitEnable {
+		if _, err := memlimit.SetGoMemLimitWithOpts(
+			memlimit.WithRatio(*memlimitRatio),
+			memlimit.WithProvider(
+				memlimit.ApplyFallback(
+					memlimit.FromCgroup,
+					memlimit.FromSystem,
+				),
+			),
+		); err != nil {
+			level.Warn(logger).Log("msg", "Failed to set GOMEMLIMIT automatically", "component", "automemlimit", "err", err)
+		}
 	}
 	prometheus.MustRegister(versioncollector.NewCollector("statsd_exporter"))
 	gatherer.DefaultGatherer.SetLogger(logger)
