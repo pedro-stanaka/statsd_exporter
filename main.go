@@ -28,6 +28,7 @@ import (
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	versioncollector "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/promlog"
@@ -330,6 +331,12 @@ func main() {
 		}
 	}
 	prometheus.MustRegister(versioncollector.NewCollector("statsd_exporter"))
+
+	// Drop the default Go runtime collector (go_memstats_*, go_gc_*,
+	// go_goroutines, go_threads, ...). client_golang registers it in init()
+	// against the default registerer, so Unregister a fresh instance here —
+	// the registry matches collectors by descriptor ID.
+	prometheus.Unregister(collectors.NewGoCollector())
 	gatherer.DefaultGatherer.SetLogger(logger)
 	gatherer.DefaultGatherer.SetGatherErrors(gatherErrors)
 
